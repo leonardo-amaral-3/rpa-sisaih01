@@ -1,0 +1,15 @@
+sisaih:
+  executable_path: 'C:/DATASUS/SISAIH01/SISAIH01.EXE'
+  window_title_regex: '.*SISAIH.*'
+
+timeouts:
+  app_start: 30
+  import_file: 600
+  consistir: 7200
+
+api:
+  base_url: 'http://localhost:3333'
+
+aws:
+  region: 'sa-east-1'
+  sqs_queue_url: 'SUA_QUEUE_URL_AQUI'
