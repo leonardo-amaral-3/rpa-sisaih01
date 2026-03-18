@@ -10,7 +10,7 @@ timeouts:
   exportar: 300
 
 export:
-  dir: 'C:\DATASUS\SISAIH01\exports'
+  dir: 'C:\exports'
 
 api:
   base_url: 'http://localhost:3333'

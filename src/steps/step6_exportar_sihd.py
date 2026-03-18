@@ -7,7 +7,7 @@ from pywinauto import mouse as pwa_mouse
 MENU_PROCESSAMENTO_INDEX = 2
 
 
-def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
+def execute(config, api, processo_id, app, main_window, toolbar, hospital_data, file_path=None):
     """
     Etapa 6: PROCESSAMENTO -> EXPORTAR PRODUCAO PARA... -> SIHD (SECRETARIA)
     Gera o arquivo de exportacao para envio ao SIHD.
@@ -68,14 +68,13 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
     api.log_progress(processo_id, f"Descendentes do dialog: {'; '.join(all_in_dialog)}", level="DEBUG")
 
     # 3. Gerar o caminho do arquivo de exportacao
+    # Formato: {YYYYMM}AIH{CNES}.txt -> ex: 202602AIH2270234.txt
     export_dir = config.get("export", {}).get("dir", r"C:\exports")
     os.makedirs(export_dir, exist_ok=True)
     cnes = hospital_data.get("cnes", "0000000")
     cnes_clean = re.sub(r'\D', '', cnes)  # "227023-4" -> "2270234"
-    # Ler competencia do dialog de exportacao primeiro (mostra "APRESENTAÇÃO: 02/2026"),
-    # fallback para janela principal
-    competencia = _ler_competencia(app, export_dialog, api, processo_id)
-    filename = f"{cnes_clean}_{competencia}.txt"
+    competencia_yyyymm = _ler_competencia(app, api, processo_id, file_path)
+    filename = f"{competencia_yyyymm}AIH{cnes_clean}.txt"
     export_path = f"{export_dir}\\{filename}"
 
     api.log_progress(processo_id, f"Arquivo de exportacao: {export_path}")
@@ -213,14 +212,19 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
                 f"Ref: TPanel rect=({p_rect.left},{p_rect.top},{p_rect.right},{p_rect.bottom}), "
                 f"Coordenada Exportar: ({click_x}, {center_y})")
 
+    # Estrategia 5: Usar dialog rect diretamente (igual step5)
     if not exportar_btn and not exportar_coords:
-        raise Exception("Botao 'Exportar' nao encontrado e sem referencia para coordenada.")
+        api.log_progress(processo_id,
+            "Nenhum botao encontrado, usando dialog rect como fallback...", level="DEBUG")
 
     def click_exportar():
         if exportar_btn:
             exportar_btn.click_input()
-        else:
+        elif exportar_coords:
             pwa_mouse.click(coords=exportar_coords)
+        else:
+            from utils.window_utils import click_button_by_dialog_rect
+            click_button_by_dialog_rect(export_dialog, api, processo_id, position="left")
 
     # 6. Clicar em Exportar
     api.log_progress(processo_id, "Clicando em Exportar...")
@@ -243,15 +247,31 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
             api.log_progress(processo_id, f"Exportacao em andamento ({elapsed}s)...")
             last_heartbeat = time.time()
 
-        # Verificar popup OK
+        # Verificar popup OK (pode ser sucesso ou erro como I/O 103)
         for w in app.windows():
+            win_text = w.window_text()
             for ctrl in w.descendants():
                 txt = ctrl.window_text()
                 cls = ctrl.class_name()
                 if txt == 'OK' and ('Button' in cls or 'Btn' in cls):
-                    api.log_progress(processo_id, f"Exportacao concluida em {elapsed}s!")
+                    # Verificar se eh popup de erro
+                    is_error = False
+                    for c2 in w.descendants():
+                        t2 = c2.window_text()
+                        if t2 and ('erro' in t2.lower() or 'error' in t2.lower() or 'I/O' in t2):
+                            is_error = True
+                            api.log_progress(processo_id,
+                                f"Popup de erro detectado: '{t2}'. Clicando OK...", level="WARNING")
+                            break
                     ctrl.click_input()
                     time.sleep(1)
+                    if is_error:
+                        # Erro I/O 103 — arquivo pode ter sido criado mesmo assim
+                        # Continuar monitorando ou tentar novamente
+                        api.log_progress(processo_id,
+                            "Erro durante exportacao, verificando se arquivo foi gerado...", level="WARNING")
+                        continue
+                    api.log_progress(processo_id, f"Exportacao concluida em {elapsed}s!")
                     _fechar_dialog(app, api, processo_id)
                     return export_path
 
@@ -269,45 +289,65 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
     raise TimeoutError(f"Exportacao nao concluiu em {timeout} segundos.")
 
 
-def _ler_competencia(app, dialog_or_window, api, processo_id):
+def _ler_competencia(app, api, processo_id, file_path=None):
     """
-    Le a competencia do SISAIH01. Procura em:
-    1. Dialog de exportacao (mostra "APRESENTAÇÃO: 02/2026")
-    2. Janela principal (status bar mostra "APRES.: 02 / 2026")
-    3. Todas as janelas do app
-    """
-    # Debug: logar textos do dialog/janela passado
-    all_texts = []
-    for ctrl in dialog_or_window.descendants():
-        txt = ctrl.window_text().strip()
-        if txt:
-            all_texts.append(f"'{txt}' ({ctrl.class_name()})")
-    api.log_progress(processo_id,
-        f"Textos para competencia: {'; '.join(all_texts)}", level="DEBUG")
+    Le a competencia de APRESENTACAO (YYYYMM) para o nome do arquivo de exportacao.
 
-    # Procurar em TODAS as janelas do app (inclui dialog de export E janela principal)
-    for w in app.windows():
-        # Checar titulo da janela
-        title = w.window_text()
-        match = re.search(r'(\d{2})\s*/\s*(\d{4})', title)
+    Estrategia:
+    1. Extrair do nome/conteudo do arquivo de producao (competencia de producao + 1 mes = apresentacao)
+    2. Buscar nas janelas do SISAIH01 (titulo ou controles com "MM / AAAA")
+    3. Fallback: "000000"
+
+    A competencia de APRESENTACAO eh sempre producao + 1 mes.
+    Ex: producao 01/2026 -> apresentacao 02/2026 -> YYYYMM = "202602"
+    """
+    # Estrategia 1: Extrair do file_path (nome do arquivo de producao)
+    # Ex: "producao_vargas_202601.txt" -> producao=202601 -> apresentacao=202602
+    if file_path:
+        basename = os.path.basename(file_path)
+        # Procurar YYYYMM no nome do arquivo
+        match = re.search(r'(\d{4})(0[1-9]|1[0-2])', basename)
         if match:
-            comp = f"{match.group(1)}{match.group(2)}"
-            api.log_progress(processo_id, f"Competencia encontrada no titulo: '{title}' -> {comp}", level="DEBUG")
+            year = int(match.group(1))
+            month = int(match.group(2))
+            # Apresentacao = producao + 1 mes
+            month += 1
+            if month > 12:
+                month = 1
+                year += 1
+            comp = f"{year}{month:02d}"
+            api.log_progress(processo_id,
+                f"Competencia extraida do arquivo: '{basename}' -> prod={match.group(0)} -> apres={comp}")
             return comp
 
-        # Checar descendants
-        for ctrl in w.descendants():
-            txt = ctrl.window_text()
-            if not txt:
-                continue
-            # Padrao "MM / AAAA" ou "MM/AAAA"
-            match = re.search(r'(\d{2})\s*/\s*(\d{4})', txt)
+    # Estrategia 2: Buscar nas janelas do SISAIH01
+    # O titulo ou status bar pode mostrar "APRES.: 02 / 2026" ou "APRESENTAÇÃO: 02/2026"
+    try:
+        for w in app.windows():
+            title = w.window_text()
+            match = re.search(r'(\d{2})\s*/\s*(\d{4})', title)
             if match:
-                comp = f"{match.group(1)}{match.group(2)}"
-                api.log_progress(processo_id, f"Competencia encontrada: '{txt}' -> {comp}", level="DEBUG")
+                mm, yyyy = match.group(1), match.group(2)
+                comp = f"{yyyy}{mm}"
+                api.log_progress(processo_id,
+                    f"Competencia encontrada no titulo: '{title}' -> {comp}", level="DEBUG")
                 return comp
 
-    api.log_progress(processo_id, "Competencia nao encontrada em nenhuma janela!", level="WARNING")
+            for ctrl in w.descendants():
+                txt = ctrl.window_text()
+                if not txt:
+                    continue
+                match = re.search(r'(\d{2})\s*/\s*(\d{4})', txt)
+                if match:
+                    mm, yyyy = match.group(1), match.group(2)
+                    comp = f"{yyyy}{mm}"
+                    api.log_progress(processo_id,
+                        f"Competencia encontrada: '{txt}' -> {comp}", level="DEBUG")
+                    return comp
+    except Exception as e:
+        api.log_progress(processo_id, f"Erro ao buscar competencia nas janelas: {e}", level="DEBUG")
+
+    api.log_progress(processo_id, "Competencia nao encontrada!", level="WARNING")
     return "000000"
 
 

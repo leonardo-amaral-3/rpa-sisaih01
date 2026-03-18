@@ -45,7 +45,7 @@ def run_automation(processo_id, file_path, hospital_data, is_local_mode):
         step5_apurar.execute(config, api, processo_id, app, main_window, toolbar)
 
         # Step 6: Processamento -> Exportar para SIHD
-        step6_exportar_sihd.execute(config, api, processo_id, app, main_window, toolbar, hospital_data)
+        step6_exportar_sihd.execute(config, api, processo_id, app, main_window, toolbar, hospital_data, file_path)
 
         api.notify_completion(processo_id, status="COMPLETED")
         
