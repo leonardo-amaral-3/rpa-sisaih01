@@ -268,55 +268,6 @@ def _ler_status(dialog):
 
 
 def _fechar_dialog(app, api, processo_id):
-    """Fecha o dialog de apuracao clicando em Fechar, por coordenada no TPanel, ou ESC."""
-    api.log_progress(processo_id, "Fechando dialog de Apuracao...")
-    time.sleep(1)
-
-    # Tentar encontrar Fechar com HWND
-    for w in app.windows():
-        for ctrl in w.descendants():
-            txt = ctrl.window_text()
-            cls = ctrl.class_name()
-            if 'Fechar' in txt and ('Button' in cls or 'Btn' in cls):
-                ctrl.click_input()
-                time.sleep(0.5)
-                api.log_progress(processo_id, "Etapa 5 concluida: Apuracao finalizada com sucesso.")
-                return
-
-    # Fechar tambem eh TSpeedButton sem HWND — clicar na 3a zona do TPanel
-    for w in app.windows():
-        title = w.window_text()
-        if 'Apur' in title and 'Pr' in title:
-            for ctrl in w.descendants():
-                if ctrl.class_name() == 'TPanel':
-                    try:
-                        r = ctrl.rectangle()
-                        height = r.bottom - r.top
-                        if 30 <= height <= 60:
-                            panel_width = r.right - r.left
-                            btn_zone = panel_width // 3
-                            # Fechar eh o 3o botao (ultima zona)
-                            progress_bar = None
-                            for c2 in w.descendants():
-                                if c2.class_name() == 'TProgressBar':
-                                    progress_bar = c2
-                                    break
-                            if progress_bar:
-                                pb_rect = progress_bar.rectangle()
-                                cy = (r.top + pb_rect.top) // 2
-                            else:
-                                cy = (r.top + r.bottom) // 2
-                            cx = r.left + btn_zone * 2 + btn_zone // 2
-                            api.log_progress(processo_id,
-                                f"Fechar por coordenada no TPanel: ({cx}, {cy})")
-                            pwa_mouse.click(coords=(cx, cy))
-                            time.sleep(0.5)
-                            api.log_progress(processo_id, "Etapa 5 concluida: Apuracao finalizada com sucesso.")
-                            return
-                    except Exception:
-                        pass
-
-    # Ultimo fallback: ESC
-    keyboard.send_keys("{ESC}")
-    time.sleep(0.5)
-    api.log_progress(processo_id, "Etapa 5 concluida: Apuracao finalizada com sucesso.")
+    """Fecha o dialog de apuracao de forma robusta."""
+    from utils.window_utils import fechar_dialog_robusto
+    fechar_dialog_robusto(app, api, processo_id, ['Apur', 'Pr'], 'Etapa 5')

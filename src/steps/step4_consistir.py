@@ -281,20 +281,6 @@ def _ler_status_processamento(dialog):
 
 
 def _fechar_dialog(app, api, processo_id):
-    """Fecha o dialog de Consistencia clicando em Fechar ou ESC."""
-    api.log_progress(processo_id, "Fechando dialog de Consistencia...")
-    time.sleep(1)
-    
-    for w in app.windows():
-        for ctrl in w.descendants():
-            txt = ctrl.window_text()
-            cls = ctrl.class_name()
-            if 'Fechar' in txt and ('Button' in cls or 'Btn' in cls):
-                ctrl.click_input()
-                time.sleep(0.5)
-                api.log_progress(processo_id, "Etapa 4 concluida: Consistencia finalizada com sucesso.")
-                return
-    
-    keyboard.send_keys("{ESC}")
-    time.sleep(0.5)
-    api.log_progress(processo_id, "Etapa 4 concluida: Consistencia finalizada com sucesso.")
+    """Fecha o dialog de Consistencia de forma robusta."""
+    from utils.window_utils import fechar_dialog_robusto
+    fechar_dialog_robusto(app, api, processo_id, ['Consist', 'Produ'], 'Etapa 4')

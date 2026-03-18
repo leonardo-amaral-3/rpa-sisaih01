@@ -278,53 +278,6 @@ def _ler_competencia(main_window):
 
 
 def _fechar_dialog(app, api, processo_id):
-    """Fecha o dialog de exportacao clicando em Fechar, por coordenada no TPanel, ou ESC."""
-    api.log_progress(processo_id, "Fechando dialog de Exportacao...")
-    time.sleep(1)
-
-    # Tentar Fechar com HWND
-    for w in app.windows():
-        for ctrl in w.descendants():
-            txt = ctrl.window_text()
-            cls = ctrl.class_name()
-            if 'Fechar' in txt and ('Button' in cls or 'Btn' in cls):
-                ctrl.click_input()
-                time.sleep(0.5)
-                api.log_progress(processo_id, "Etapa 6 concluida: Exportacao para SIHD finalizada com sucesso.")
-                return
-
-    # Fechar tambem eh TSpeedButton — clicar na 3a zona do TPanel
-    for w in app.windows():
-        title = w.window_text()
-        if 'Exporta' in title and 'Produ' in title:
-            for ctrl in w.descendants():
-                if ctrl.class_name() == 'TPanel':
-                    try:
-                        r = ctrl.rectangle()
-                        height = r.bottom - r.top
-                        if 30 <= height <= 60:
-                            panel_width = r.right - r.left
-                            btn_zone = panel_width // 3
-                            progress_bar = None
-                            for c2 in w.descendants():
-                                if c2.class_name() == 'TProgressBar':
-                                    progress_bar = c2
-                                    break
-                            if progress_bar:
-                                pb_rect = progress_bar.rectangle()
-                                cy = (r.top + pb_rect.top) // 2
-                            else:
-                                cy = (r.top + r.bottom) // 2
-                            cx = r.left + btn_zone * 2 + btn_zone // 2
-                            api.log_progress(processo_id,
-                                f"Fechar por coordenada no TPanel: ({cx}, {cy})")
-                            pwa_mouse.click(coords=(cx, cy))
-                            time.sleep(0.5)
-                            api.log_progress(processo_id, "Etapa 6 concluida: Exportacao para SIHD finalizada com sucesso.")
-                            return
-                    except Exception:
-                        pass
-
-    keyboard.send_keys("{ESC}")
-    time.sleep(0.5)
-    api.log_progress(processo_id, "Etapa 6 concluida: Exportacao para SIHD finalizada com sucesso.")
+    """Fecha o dialog de exportacao de forma robusta."""
+    from utils.window_utils import fechar_dialog_robusto
+    fechar_dialog_robusto(app, api, processo_id, ['Exporta', 'Produ'], 'Etapa 6')

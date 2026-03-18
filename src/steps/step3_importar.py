@@ -175,19 +175,6 @@ def execute(config, api, processo_id, app, main_window, toolbar, file_path):
 
 
 def _fechar_dialog(app, api, processo_id):
-    """Fecha o dialog de importacao clicando em Fechar ou ESC."""
-    api.log_progress(processo_id, "Fechando dialog de importacao...")
-    time.sleep(0.5)
-    
-    for w in app.windows():
-        for ctrl in w.descendants():
-            txt = ctrl.window_text()
-            cls = ctrl.class_name()
-            if 'Fechar' in txt and ('Button' in cls or 'Btn' in cls):
-                ctrl.click_input()
-                time.sleep(0.5)
-                return
-    
-    # Fallback ESC
-    keyboard.send_keys("{ESC}")
-    time.sleep(0.5)
+    """Fecha o dialog de importacao de forma robusta."""
+    from utils.window_utils import fechar_dialog_robusto
+    fechar_dialog_robusto(app, api, processo_id, ['Importa', 'Produ'], 'Etapa 3')
