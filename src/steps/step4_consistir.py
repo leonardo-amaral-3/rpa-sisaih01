@@ -1,6 +1,7 @@
 import time
 from pywinauto import keyboard
 from pywinauto.controls.common_controls import ToolbarWrapper
+from pywinauto import mouse as pwa_mouse
 
 # PROCESSAMENTO eh o botao[2] na toolbar principal
 MENU_PROCESSAMENTO_INDEX = 2
@@ -94,65 +95,90 @@ def execute(config, api, processo_id, app, main_window, toolbar):
 
     # Estrategia 3: Encontrar por eliminacao na toolbar do dialog
     # O botao Consistir pode ter window_text() vazio (Delphi TBitBtn com glyph)
-    # A toolbar do dialog contem: Consistir | Todas | Selecionar | Imprimir | Fechar
     if not consistir_btn:
         api.log_progress(processo_id, "Estrategia 3: buscando Consistir por eliminacao na toolbar...", level="DEBUG")
         known_btn_texts = {'Selecionar', '&Selecionar', 'Fechar', '&Fechar',
                            'Imprimir', '&Imprimir', 'Gravar', '&Gravar'}
-        # Encontrar a toolbar que contem Selecionar ou Todas (mesma toolbar do Consistir)
-        target_toolbar = None
-        for ctrl in consist_dialog.descendants():
-            if ctrl.class_name() == 'TToolBar':
-                children = ctrl.children()
-                child_info = [(c.window_text(), c.class_name()) for c in children]
-                api.log_progress(processo_id, f"TToolBar filhos: {child_info}", level="DEBUG")
-                if any('Selecionar' in c.window_text() or 'Todas' in c.window_text() for c in children):
-                    target_toolbar = ctrl
-                    api.log_progress(processo_id, "Toolbar com Selecionar/Todas encontrada!", level="DEBUG")
-                    break
-
-        if target_toolbar:
-            children = target_toolbar.children()
-            for child in children:
-                child_cls = child.class_name()
-                child_txt = child.window_text().strip()
-                if child_cls in ('TBitBtn', 'TSpeedButton', 'TToolButton'):
-                    if child_txt not in known_btn_texts:
-                        try:
-                            rect = child.rectangle()
-                            api.log_progress(processo_id,
-                                f"Candidato Consistir: texto='{child_txt}', classe={child_cls}, "
-                                f"rect=({rect.left},{rect.top},{rect.right},{rect.bottom})")
-                        except Exception:
-                            api.log_progress(processo_id,
-                                f"Candidato Consistir: texto='{child_txt}', classe={child_cls}")
-                        consistir_btn = child
-                        break
-
-    # Estrategia 4: Encontrar o primeiro TBitBtn no dialog com texto vazio
-    # (fallback caso a toolbar nao seja encontrada como parent direto)
-    if not consistir_btn:
-        api.log_progress(processo_id, "Estrategia 4: buscando primeiro TBitBtn sem texto no dialog...", level="DEBUG")
         for ctrl in consist_dialog.descendants():
             cls = ctrl.class_name()
             txt = ctrl.window_text().strip()
-            if cls in ('TBitBtn', 'TSpeedButton') and not txt:
+            if cls in ('TBitBtn', 'TSpeedButton', 'TToolButton') and txt not in known_btn_texts:
                 try:
                     rect = ctrl.rectangle()
                     api.log_progress(processo_id,
-                        f"TBitBtn sem texto encontrado: classe={cls}, "
+                        f"Candidato Consistir: texto='{txt}', classe={cls}, "
                         f"rect=({rect.left},{rect.top},{rect.right},{rect.bottom})")
                 except Exception:
-                    pass
-                consistir_btn = ctrl
+                    api.log_progress(processo_id,
+                        f"Candidato Consistir: texto='{txt}', classe={cls}")
+                # Aceitar se nao for um botao conhecido
+                if txt not in known_btn_texts and 'Selecionar' not in txt:
+                    consistir_btn = ctrl
+                    break
+
+    # Estrategia 4: Consistir eh provavelmente um TSpeedButton (TGraphicControl, sem HWND)
+    # TSpeedButton nao aparece em descendants() do pywinauto pois nao tem window handle.
+    # Solucao: clicar por coordenada relativa ao botao Selecionar (que eh TBitBtn com HWND).
+    # Layout da barra: [Consistir] [Todas] [Selecionar] [Imprimir] [Fechar]
+    consistir_coords = None
+    if not consistir_btn:
+        api.log_progress(processo_id,
+            "Estrategia 4: Consistir nao tem HWND (provavel TSpeedButton). "
+            "Calculando coordenada relativa ao botao Selecionar...", level="DEBUG")
+
+        # Encontrar Selecionar como ponto de referencia
+        sel_btn = None
+        for ctrl in consist_dialog.descendants():
+            txt = ctrl.window_text()
+            cls = ctrl.class_name()
+            if 'Selecionar' in txt and 'Btn' in cls:
+                sel_btn = ctrl
                 break
 
-    if not consistir_btn:
-        raise Exception(f"Botao 'Consistir' nao encontrado. Controles: {'; '.join(all_with_text)}")
+        if sel_btn:
+            sel_rect = sel_btn.rectangle()
+            center_y = (sel_rect.top + sel_rect.bottom) // 2
+            sel_width = sel_rect.right - sel_rect.left  # ~120px
+
+            # Consistir fica 2 posicoes à esquerda de Selecionar (Consistir | Todas | Selecionar)
+            # Cada botao tem ~largura de Selecionar, checkbox Todas ~80px
+            # Estimativa conservadora: centro do Consistir = ~1.5 larguras à esquerda
+            click_x = sel_rect.left - sel_width - 60  # pula Todas (~80px) + metade de Consistir
+            api.log_progress(processo_id,
+                f"Ref: Selecionar rect=({sel_rect.left},{sel_rect.top},{sel_rect.right},{sel_rect.bottom}), "
+                f"sel_width={sel_width}")
+
+            # Encontrar o painel container para garantir que nao clicamos fora dele
+            for ctrl in consist_dialog.descendants():
+                if ctrl.class_name() == 'TPanel':
+                    p_rect = ctrl.rectangle()
+                    # O painel da barra de botoes contem o Selecionar
+                    if p_rect.top <= sel_rect.top and p_rect.bottom >= sel_rect.bottom:
+                        if click_x < p_rect.left + 10:
+                            # Ajustar para nao clicar fora do painel
+                            click_x = p_rect.left + 65  # ~centro do primeiro botao
+                            api.log_progress(processo_id,
+                                f"Ajustado para nao sair do painel: panel_left={p_rect.left}")
+                        break
+
+            consistir_coords = (click_x, center_y)
+            api.log_progress(processo_id, f"Coordenada calculada para Consistir: ({click_x}, {center_y})")
+        else:
+            api.log_progress(processo_id, "Botao Selecionar nao encontrado como referencia!", level="ERROR")
+
+    if not consistir_btn and not consistir_coords:
+        raise Exception(f"Botao 'Consistir' nao encontrado e sem referencia para coordenada. Controles: {'; '.join(all_with_text)}")
+
+    # Helper para clicar em Consistir (por controle ou por coordenada)
+    def click_consistir():
+        if consistir_btn:
+            consistir_btn.click_input()
+        else:
+            pwa_mouse.click(coords=consistir_coords)
 
     # === FASE 1: Primeiro clique — Abre banco de dados e carrega AIHs ===
     api.log_progress(processo_id, "Fase 1: Clicando em Consistir para abrir banco e carregar AIHs...")
-    consistir_btn.click_input()
+    click_consistir()
 
     # Aguardar o banco abrir e as AIHs carregarem (status "Preparado")
     # Detectamos pelo texto "Preparado" em algum controle, ou pela lista de AIHs populada
@@ -185,7 +211,7 @@ def execute(config, api, processo_id, app, main_window, toolbar):
 
     # === FASE 2: Segundo clique — Inicia processamento das AIHs ===
     api.log_progress(processo_id, "Fase 2: Clicando em Consistir novamente para iniciar processamento das AIHs...")
-    consistir_btn.click_input()
+    click_consistir()
 
     # 4. Aguardar o processamento concluir (pode levar 40min+)
     timeout = config["timeouts"].get("consistir", 7200)  # 2h default
