@@ -32,7 +32,15 @@ def execute(config, api, processo_id, app, main_window, toolbar):
 
     api.log_progress(processo_id, f"Dialog encontrado: '{apurar_dialog.window_text()}'")
 
-    # Debug: listar controles do dialog
+    # Debug: logar rect do dialog e descendants
+    try:
+        dlg_rect = apurar_dialog.rectangle()
+        api.log_progress(processo_id,
+            f"Dialog rect: ({dlg_rect.left},{dlg_rect.top},{dlg_rect.right},{dlg_rect.bottom})",
+            level="DEBUG")
+    except Exception:
+        pass
+
     all_in_dialog = []
     for ctrl in apurar_dialog.descendants():
         txt = ctrl.window_text()
@@ -45,12 +53,10 @@ def execute(config, api, processo_id, app, main_window, toolbar):
     api.log_progress(processo_id, f"Descendentes do dialog: {'; '.join(all_in_dialog)}", level="DEBUG")
 
     # 3. Encontrar o botao "Apurar"
-    # Layout esperado: [Apurar] [Imprimir] [Fechar]
-    # Apurar pode ser TSpeedButton (sem HWND) — mesma estrategia do step4
     apurar_btn = None
-    apurar_coords = None
+    use_dialog_rect = False
 
-    # Estrategia 1: buscar por texto "Apurar" nos descendants
+    # Estrategia 1: buscar por texto "Apurar" nos descendants (com HWND)
     for ctrl in apurar_dialog.descendants():
         txt = ctrl.window_text()
         cls = ctrl.class_name()
@@ -70,97 +76,19 @@ def execute(config, api, processo_id, app, main_window, toolbar):
                 api.log_progress(processo_id, f"Candidato Apurar: '{txt}' ({cls})")
                 break
 
-    # Estrategia 3: coordenada relativa ao botao Fechar (TBitBtn com HWND)
-    # Layout: [Apurar] [Imprimir] [Fechar] — Apurar fica à esquerda
+    # Estrategia 3: Apurar eh TSpeedButton sem HWND.
+    # Usar o RECT DO DIALOG — botoes ficam no rodape, Apurar eh o mais à esquerda.
     if not apurar_btn:
+        use_dialog_rect = True
         api.log_progress(processo_id,
-            "Apurar nao tem HWND (provavel TSpeedButton). Calculando coordenada...", level="DEBUG")
-
-        fechar_btn = None
-        for ctrl in apurar_dialog.descendants():
-            txt = ctrl.window_text()
-            cls = ctrl.class_name()
-            if 'Fechar' in txt and ('Button' in cls or 'Btn' in cls):
-                fechar_btn = ctrl
-                break
-
-        if fechar_btn:
-            fechar_rect = fechar_btn.rectangle()
-            center_y = (fechar_rect.top + fechar_rect.bottom) // 2
-            btn_width = fechar_rect.right - fechar_rect.left
-
-            click_x = fechar_rect.left - btn_width * 2 - 10 + btn_width // 2
-
-            for ctrl in apurar_dialog.descendants():
-                if ctrl.class_name() == 'TPanel':
-                    p_rect = ctrl.rectangle()
-                    if p_rect.top <= fechar_rect.top and p_rect.bottom >= fechar_rect.bottom:
-                        if click_x < p_rect.left + 10:
-                            click_x = p_rect.left + btn_width // 2 + 5
-                        break
-
-            apurar_coords = (click_x, center_y)
-            api.log_progress(processo_id,
-                f"Ref: Fechar rect=({fechar_rect.left},{fechar_rect.top},{fechar_rect.right},{fechar_rect.bottom}), "
-                f"Coordenada Apurar: ({click_x}, {center_y})")
-        else:
-            api.log_progress(processo_id, "Botao Fechar tambem nao tem HWND, usando TPanel como referencia...", level="DEBUG")
-
-    # Estrategia 4: TODOS os botoes sao TSpeedButton sem HWND (Apurar, Imprimir, Fechar)
-    # Usar o TPanel (barra de botoes) como referencia de coordenada.
-    # Identificamos a barra de botoes como o TPanel mais estreito (altura ~40-50px)
-    # que contem o TProgressBar.
-    # Layout: [Apurar] [Imprimir] [Fechar] dentro do painel
-    if not apurar_btn and not apurar_coords:
-        api.log_progress(processo_id, "Estrategia 4: usando TPanel como referencia...", level="DEBUG")
-
-        # Encontrar o TPanel da barra de botoes (altura 30-60px, o mais ALTO na tela)
-        candidate_panels = []
-        progress_bar = None
-        for ctrl in apurar_dialog.descendants():
-            if ctrl.class_name() == 'TProgressBar':
-                progress_bar = ctrl
-            cls = ctrl.class_name()
-            if cls == 'TPanel':
-                try:
-                    r = ctrl.rectangle()
-                    height = r.bottom - r.top
-                    if 30 <= height <= 60:
-                        candidate_panels.append((r.top, ctrl))
-                except Exception:
-                    pass
-        candidate_panels.sort(key=lambda x: x[0])
-        button_panel = candidate_panels[0][1] if candidate_panels else None
-
-        if button_panel:
-            p_rect = button_panel.rectangle()
-            panel_width = p_rect.right - p_rect.left
-            # Centro Y do painel, mas acima da progress bar se ela existir
-            if progress_bar:
-                pb_rect = progress_bar.rectangle()
-                center_y = (p_rect.top + pb_rect.top) // 2
-            else:
-                center_y = (p_rect.top + p_rect.bottom) // 2
-
-            # Apurar eh o 1o de 3 botoes. Dividir o painel em 3 partes iguais.
-            btn_zone_width = panel_width // 3
-            click_x = p_rect.left + btn_zone_width // 2  # centro da 1a zona
-
-            apurar_coords = (click_x, center_y)
-            api.log_progress(processo_id,
-                f"Ref: TPanel rect=({p_rect.left},{p_rect.top},{p_rect.right},{p_rect.bottom}), "
-                f"Coordenada Apurar: ({click_x}, {center_y})")
-        else:
-            api.log_progress(processo_id, "TPanel barra de botoes nao encontrado!", level="ERROR")
-
-    if not apurar_btn and not apurar_coords:
-        raise Exception("Botao 'Apurar' nao encontrado e sem referencia para coordenada.")
+            "Apurar nao tem HWND. Usando rect do dialog para clicar no rodape.", level="DEBUG")
 
     def click_apurar():
         if apurar_btn:
             apurar_btn.click_input()
         else:
-            pwa_mouse.click(coords=apurar_coords)
+            from utils.window_utils import click_button_by_dialog_rect
+            click_button_by_dialog_rect(apurar_dialog, api, processo_id, position="left")
 
     # === FASE 1: Primeiro clique — carrega dados ===
     api.log_progress(processo_id, "Fase 1: Clicando em Apurar para carregar dados...")
@@ -220,7 +148,6 @@ def execute(config, api, processo_id, app, main_window, toolbar):
         time.sleep(5)
         elapsed = int(time.time() - start_time)
 
-        # Heartbeat periodico
         if time.time() - last_heartbeat >= heartbeat_interval:
             minutes = elapsed // 60
             proc_info = _ler_status(apurar_dialog)
