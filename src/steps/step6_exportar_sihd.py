@@ -19,10 +19,10 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
     click_menu(main_window, toolbar, MENU_PROCESSAMENTO_INDEX)  # so abre o menu
 
     # PROCESSAMENTO dropdown:
-    #   [0] CONSISTIR PRODUCAO
-    #   [1] APURAR PREVIA
-    #   [2] EXPORTAR PRODUCAO PARA... (tem submenu ->)
-    keyboard.send_keys("{DOWN}{DOWN}{DOWN}")  # 3x DOWN para chegar em EXPORTAR
+    #   [0] CONSISTIR PRODUCAO  (ja selecionado ao abrir)
+    #   [1] APURAR PREVIA       (1x DOWN)
+    #   [2] EXPORTAR PRODUCAO PARA... (2x DOWN, tem submenu ->)
+    keyboard.send_keys("{DOWN}{DOWN}")  # 2x DOWN para chegar em EXPORTAR
     time.sleep(0.2)
     keyboard.send_keys("{RIGHT}")  # abre submenu
     time.sleep(0.3)
@@ -32,16 +32,25 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
 
     api.log_progress(processo_id, "Menu PROCESSAMENTO > EXPORTAR > SIHD clicado.")
 
-    # 2. Encontrar o dialog de exportacao
+    # 2. Encontrar o dialog de exportacao (com retry, pode demorar a abrir)
     export_dialog = None
-    for w in app.windows():
-        title = w.window_text()
-        if 'Exporta' in title and 'Produ' in title:
-            export_dialog = w
+    for attempt in range(5):
+        for w in app.windows():
+            title = w.window_text()
+            if 'Exporta' in title and 'Produ' in title:
+                export_dialog = w
+                break
+        if export_dialog:
             break
+        time.sleep(1)
 
     if not export_dialog:
-        export_dialog = app.top_window()
+        # Debug: listar todas as janelas para diagnostico
+        all_wins = []
+        for w in app.windows():
+            all_wins.append(f"'{w.window_text()}' ({w.class_name()})")
+        api.log_progress(processo_id, f"Janelas disponiveis: {'; '.join(all_wins)}", level="DEBUG")
+        raise Exception("Dialog de exportacao nao encontrado. Verifique se o menu PROCESSAMENTO > EXPORTAR abriu corretamente.")
 
     api.log_progress(processo_id, f"Dialog encontrado: '{export_dialog.window_text()}'")
 
