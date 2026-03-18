@@ -128,18 +128,14 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
             center_y = (fechar_rect.top + fechar_rect.bottom) // 2
             btn_width = fechar_rect.right - fechar_rect.left
 
-            # Layout provavel: [Exportar] [Imprimir] [Fechar]
             click_x = fechar_rect.left - btn_width * 2 - 10 + btn_width // 2
 
-            # Verificar limites do painel
             for ctrl in export_dialog.descendants():
                 if ctrl.class_name() == 'TPanel':
                     p_rect = ctrl.rectangle()
                     if p_rect.top <= fechar_rect.top and p_rect.bottom >= fechar_rect.bottom:
                         if click_x < p_rect.left + 10:
                             click_x = p_rect.left + btn_width // 2 + 5
-                            api.log_progress(processo_id,
-                                f"Ajustado para painel: panel_left={p_rect.left}")
                         break
 
             exportar_coords = (click_x, center_y)
@@ -147,7 +143,44 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
                 f"Ref: Fechar rect=({fechar_rect.left},{fechar_rect.top},{fechar_rect.right},{fechar_rect.bottom}), "
                 f"Coordenada Exportar: ({click_x}, {center_y})")
         else:
-            api.log_progress(processo_id, "Botao Fechar nao encontrado como referencia!", level="ERROR")
+            api.log_progress(processo_id, "Botao Fechar tambem nao tem HWND, usando TPanel...", level="DEBUG")
+
+    # Estrategia 4: TODOS os botoes sao TSpeedButton sem HWND
+    # Usar o TPanel (barra de botoes) como referencia.
+    # Layout: [Exportar] [Imprimir] [Fechar] dentro do painel estreito
+    if not exportar_btn and not exportar_coords:
+        api.log_progress(processo_id, "Estrategia 4: usando TPanel como referencia...", level="DEBUG")
+
+        button_panel = None
+        progress_bar = None
+        for ctrl in export_dialog.descendants():
+            if ctrl.class_name() == 'TProgressBar':
+                progress_bar = ctrl
+            if ctrl.class_name() == 'TPanel':
+                try:
+                    r = ctrl.rectangle()
+                    height = r.bottom - r.top
+                    if 30 <= height <= 60:
+                        button_panel = ctrl
+                except Exception:
+                    pass
+
+        if button_panel:
+            p_rect = button_panel.rectangle()
+            panel_width = p_rect.right - p_rect.left
+            if progress_bar:
+                pb_rect = progress_bar.rectangle()
+                center_y = (p_rect.top + pb_rect.top) // 2
+            else:
+                center_y = (p_rect.top + p_rect.bottom) // 2
+
+            btn_zone_width = panel_width // 3
+            click_x = p_rect.left + btn_zone_width // 2
+
+            exportar_coords = (click_x, center_y)
+            api.log_progress(processo_id,
+                f"Ref: TPanel rect=({p_rect.left},{p_rect.top},{p_rect.right},{p_rect.bottom}), "
+                f"Coordenada Exportar: ({click_x}, {center_y})")
 
     if not exportar_btn and not exportar_coords:
         raise Exception("Botao 'Exportar' nao encontrado e sem referencia para coordenada.")
@@ -236,10 +269,11 @@ def _ler_competencia(main_window):
 
 
 def _fechar_dialog(app, api, processo_id):
-    """Fecha o dialog de exportacao clicando em Fechar ou ESC."""
+    """Fecha o dialog de exportacao clicando em Fechar, por coordenada no TPanel, ou ESC."""
     api.log_progress(processo_id, "Fechando dialog de Exportacao...")
     time.sleep(1)
 
+    # Tentar Fechar com HWND
     for w in app.windows():
         for ctrl in w.descendants():
             txt = ctrl.window_text()
@@ -249,6 +283,38 @@ def _fechar_dialog(app, api, processo_id):
                 time.sleep(0.5)
                 api.log_progress(processo_id, "Etapa 6 concluida: Exportacao para SIHD finalizada com sucesso.")
                 return
+
+    # Fechar tambem eh TSpeedButton — clicar na 3a zona do TPanel
+    for w in app.windows():
+        title = w.window_text()
+        if 'Exporta' in title and 'Produ' in title:
+            for ctrl in w.descendants():
+                if ctrl.class_name() == 'TPanel':
+                    try:
+                        r = ctrl.rectangle()
+                        height = r.bottom - r.top
+                        if 30 <= height <= 60:
+                            panel_width = r.right - r.left
+                            btn_zone = panel_width // 3
+                            progress_bar = None
+                            for c2 in w.descendants():
+                                if c2.class_name() == 'TProgressBar':
+                                    progress_bar = c2
+                                    break
+                            if progress_bar:
+                                pb_rect = progress_bar.rectangle()
+                                cy = (r.top + pb_rect.top) // 2
+                            else:
+                                cy = (r.top + r.bottom) // 2
+                            cx = r.left + btn_zone * 2 + btn_zone // 2
+                            api.log_progress(processo_id,
+                                f"Fechar por coordenada no TPanel: ({cx}, {cy})")
+                            pwa_mouse.click(coords=(cx, cy))
+                            time.sleep(0.5)
+                            api.log_progress(processo_id, "Etapa 6 concluida: Exportacao para SIHD finalizada com sucesso.")
+                            return
+                    except Exception:
+                        pass
 
     keyboard.send_keys("{ESC}")
     time.sleep(0.5)
