@@ -18,33 +18,56 @@ def execute(config, api, processo_id, app, main_window, toolbar):
     
     api.log_progress(processo_id, "Dialog 'Consistencia da Producao' aberto.")
     time.sleep(2)
-    
-    # 2. Encontrar e clicar o botao "Consistir" no dialog
-    consistir_btn = None
+
+    # 2. Encontrar o dialog de consistencia
+    consist_dialog = None
     for w in app.windows():
-        for ctrl in w.descendants():
-            txt = ctrl.window_text()
-            cls = ctrl.class_name()
-            if txt == 'Consistir' and ('Button' in cls or 'Btn' in cls):
-                consistir_btn = ctrl
-                break
-        if consistir_btn:
+        title = w.window_text()
+        if 'Consist' in title and 'Produ' in title:
+            consist_dialog = w
             break
-    
+
+    if not consist_dialog:
+        consist_dialog = app.top_window()
+
+    # Debug: listar controles do dialog
+    all_controls = []
+    for ctrl in consist_dialog.descendants():
+        txt = ctrl.window_text()
+        cls = ctrl.class_name()
+        all_controls.append(f"'{txt}' ({cls})")
+    api.log_progress(processo_id, f"Controles no dialog: {'; '.join(all_controls)}", level="DEBUG")
+
+    # 3. Encontrar o botao "Consistir" com fallback progressivo
+    consistir_btn = None
+
+    # Estrategia 1: texto exato + classe de botao
+    for ctrl in consist_dialog.descendants():
+        txt = ctrl.window_text()
+        cls = ctrl.class_name()
+        if 'Consistir' in txt and ('Button' in cls or 'Btn' in cls):
+            consistir_btn = ctrl
+            break
+
+    # Estrategia 2: TBitBtn no dialog (texto pode estar vazio)
     if not consistir_btn:
-        # Tentar achar por texto parcial
-        for w in app.windows():
-            for ctrl in w.descendants():
-                txt = ctrl.window_text()
-                cls = ctrl.class_name()
-                if 'Consistir' in txt and ('Button' in cls or 'Btn' in cls):
-                    consistir_btn = ctrl
-                    break
-            if consistir_btn:
+        for ctrl in consist_dialog.descendants():
+            if ctrl.class_name() == 'TBitBtn':
+                consistir_btn = ctrl
+                api.log_progress(processo_id, f"Botao encontrado via classe TBitBtn (texto: '{ctrl.window_text()}')")
                 break
-    
+
+    # Estrategia 3: qualquer controle com texto "Consistir"
     if not consistir_btn:
-        raise Exception("Botao 'Consistir' nao encontrado no dialog.")
+        for ctrl in consist_dialog.descendants():
+            txt = ctrl.window_text()
+            if 'Consistir' in txt and ctrl.class_name() not in ('TLabel', 'TStaticText'):
+                consistir_btn = ctrl
+                api.log_progress(processo_id, f"Botao encontrado por texto em {ctrl.class_name()}")
+                break
+
+    if not consistir_btn:
+        raise Exception(f"Botao 'Consistir' nao encontrado. Controles: {'; '.join(all_controls)}")
     
     api.log_progress(processo_id, "Clicando em Consistir... Aguardando processamento (pode levar 40min+).")
     consistir_btn.click_input()
