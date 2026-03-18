@@ -1,5 +1,6 @@
 import time
 from pywinauto import keyboard
+from pywinauto.controls.common_controls import ToolbarWrapper
 
 # PROCESSAMENTO eh o botao[2] na toolbar principal
 MENU_PROCESSAMENTO_INDEX = 2
@@ -39,27 +40,48 @@ def execute(config, api, processo_id, app, main_window, toolbar):
     api.log_progress(processo_id, f"Controles no dialog: {'; '.join(all_controls)}", level="DEBUG")
 
     # 3. Encontrar o botao "Consistir"
-    # No SISAIH01 o botao pode estar FORA do dialog interno (em um painel pai),
-    # entao buscamos em TODAS as janelas do app.
+    # O botao pode ser TBitBtn, TSpeedButton, TToolButton, ou dentro de uma TToolBar.
     consistir_btn = None
-    all_bitbtns = []
 
+    # Debug: listar TODOS os controles com texto em todas as janelas
+    all_with_text = []
     for w in app.windows():
         for ctrl in w.descendants():
             txt = ctrl.window_text()
             cls = ctrl.class_name()
-            if cls == 'TBitBtn':
-                all_bitbtns.append(f"'{txt}' ({cls}) pos={ctrl.rectangle()}")
-            if 'Consistir' in txt and ('Button' in cls or 'Btn' in cls):
+            if txt.strip():
+                all_with_text.append(f"'{txt}' ({cls})")
+            # Estrategia 1: qualquer controle com texto "Consistir" que seja clicavel
+            if 'Consistir' in txt and not consistir_btn:
                 consistir_btn = ctrl
-                break
-        if consistir_btn:
-            break
+    api.log_progress(processo_id, f"Controles com texto (todas janelas): {'; '.join(all_with_text)}", level="DEBUG")
 
-    api.log_progress(processo_id, f"TBitBtns encontrados: {'; '.join(all_bitbtns)}", level="DEBUG")
+    # Estrategia 2: procurar TToolBar e enumerar seus botoes
+    if not consistir_btn:
+        for w in app.windows():
+            for ctrl in w.descendants():
+                if ctrl.class_name() == 'TToolBar':
+                    try:
+                        tb = ToolbarWrapper(ctrl.handle)
+                        count = tb.button_count()
+                        api.log_progress(processo_id, f"TToolBar encontrada com {count} botoes", level="DEBUG")
+                        for i in range(count):
+                            btn = tb.button(i)
+                            btn_text = btn.text if hasattr(btn, 'text') else ''
+                            api.log_progress(processo_id, f"  Toolbar btn[{i}]: '{btn_text}'", level="DEBUG")
+                            if 'Consistir' in btn_text:
+                                consistir_btn = btn
+                                api.log_progress(processo_id, f"Botao Consistir encontrado na TToolBar[{i}]")
+                                break
+                    except Exception as e:
+                        api.log_progress(processo_id, f"Erro ao ler TToolBar: {e}", level="DEBUG")
+                if consistir_btn:
+                    break
+            if consistir_btn:
+                break
 
     if not consistir_btn:
-        raise Exception(f"Botao 'Consistir' nao encontrado. TBitBtns: {'; '.join(all_bitbtns)}")
+        raise Exception(f"Botao 'Consistir' nao encontrado. Controles: {'; '.join(all_with_text)}")
 
     # === FASE 1: Primeiro clique — Abre banco de dados e carrega AIHs ===
     api.log_progress(processo_id, "Fase 1: Clicando em Consistir para abrir banco e carregar AIHs...")
