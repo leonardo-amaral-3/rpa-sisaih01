@@ -112,12 +112,15 @@ def execute(config, api, processo_id, app, main_window, toolbar, file_path):
             importar_btn = ctrl
             break
 
-    # Estrategia 2: buscar TBitBtn no dialog (pode ter texto vazio mas ser o botao certo)
+    # Estrategia 2: buscar TBitBtn no dialog — pular Fechar e outros botoes conhecidos
     if not importar_btn:
         for ctrl in import_dialog.descendants():
             if ctrl.class_name() == 'TBitBtn':
+                txt = ctrl.window_text()
+                if txt and any(kw in txt for kw in ['Fechar', 'Close', '&Fechar']):
+                    continue
                 importar_btn = ctrl
-                api.log_progress(processo_id, f"Botao encontrado via classe TBitBtn (texto: '{ctrl.window_text()}')")
+                api.log_progress(processo_id, f"Botao encontrado via TBitBtn (texto: '{txt}')")
                 break
 
     # Estrategia 3: buscar qualquer controle com texto "Importar" (pode ser TPanel, TLabel, etc)

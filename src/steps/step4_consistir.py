@@ -49,13 +49,20 @@ def execute(config, api, processo_id, app, main_window, toolbar):
             consistir_btn = ctrl
             break
 
-    # Estrategia 2: TBitBtn no dialog (texto pode estar vazio)
+    # Estrategia 2: TBitBtn no dialog — pular Fechar/Selecionar, pegar o correto
     if not consistir_btn:
+        bitbtns = []
         for ctrl in consist_dialog.descendants():
             if ctrl.class_name() == 'TBitBtn':
+                txt = ctrl.window_text()
+                bitbtns.append(f"'{txt}' pos={ctrl.rectangle()}")
+                # Pular botoes que claramente nao sao Consistir
+                if txt and any(kw in txt for kw in ['Fechar', 'Close', 'Selecionar', 'Selecione', '&Fechar']):
+                    continue
                 consistir_btn = ctrl
-                api.log_progress(processo_id, f"Botao encontrado via classe TBitBtn (texto: '{ctrl.window_text()}')")
+                api.log_progress(processo_id, f"Botao encontrado via TBitBtn (texto: '{txt}')")
                 break
+        api.log_progress(processo_id, f"TBitBtns no dialog: {'; '.join(bitbtns)}", level="DEBUG")
 
     # Estrategia 3: qualquer controle com texto "Consistir"
     if not consistir_btn:
@@ -68,34 +75,77 @@ def execute(config, api, processo_id, app, main_window, toolbar):
 
     if not consistir_btn:
         raise Exception(f"Botao 'Consistir' nao encontrado. Controles: {'; '.join(all_controls)}")
-    
-    api.log_progress(processo_id, "Clicando em Consistir... Aguardando processamento (pode levar 40min+).")
+
+    # === FASE 1: Primeiro clique — Abre banco de dados e carrega AIHs ===
+    api.log_progress(processo_id, "Fase 1: Clicando em Consistir para abrir banco e carregar AIHs...")
     consistir_btn.click_input()
-    
-    # 3. Aguardar o processamento concluir
-    # O dialog mostra "Historico do processamento" enquanto roda.
-    # Quando termina, o botao Consistir volta a ficar habilitado,
-    # ou aparece um dialog de conclusao.
+
+    # Aguardar o banco abrir e as AIHs carregarem (status "Preparado")
+    # Detectamos pelo texto "Preparado" em algum controle, ou pela lista de AIHs populada
+    prep_timeout = config["timeouts"].get("consistir_preparar", 120)  # 2min pra carregar
+    start_prep = time.time()
+
+    api.log_progress(processo_id, f"Aguardando banco de dados carregar (timeout: {prep_timeout}s)...")
+
+    preparado = False
+    while time.time() - start_prep < prep_timeout:
+        time.sleep(2)
+        for ctrl in consist_dialog.descendants():
+            txt = ctrl.window_text()
+            # "Preparado" aparece no status bar quando as AIHs foram carregadas
+            if 'Preparado' in txt:
+                preparado = True
+                break
+            # Tambem verificar se o historico mostra "Selecione AIH"
+            if 'Selecione AIH' in txt:
+                preparado = True
+                break
+        if preparado:
+            break
+
+    if not preparado:
+        api.log_progress(processo_id, "Status 'Preparado' nao detectado, tentando continuar mesmo assim...", level="WARNING")
+
+    api.log_progress(processo_id, "Banco carregado. AIHs prontas para processamento.")
+    time.sleep(1)
+
+    # === FASE 2: Segundo clique — Inicia processamento das AIHs ===
+    api.log_progress(processo_id, "Fase 2: Clicando em Consistir novamente para iniciar processamento das AIHs...")
+    consistir_btn.click_input()
+
+    # 4. Aguardar o processamento concluir (pode levar 40min+)
     timeout = config["timeouts"].get("consistir", 7200)  # 2h default
     start_time = time.time()
     heartbeat_interval = 60  # Log a cada 1 minuto
     last_heartbeat = start_time
-    
+    processamento_iniciou = False
+
     api.log_progress(processo_id, f"Consistencia em andamento (timeout: {timeout}s = {timeout//3600}h)...")
-    
-    # Dar um tempo inicial pro processamento comecar
+
+    # Dar tempo inicial pro processamento comecar
     time.sleep(10)
-    
+
     while time.time() - start_time < timeout:
         time.sleep(5)
         elapsed = int(time.time() - start_time)
-        
+
         # Heartbeat periodico
         if time.time() - last_heartbeat >= heartbeat_interval:
             minutes = elapsed // 60
-            api.log_progress(processo_id, f"Consistencia em andamento ({minutes}min)...")
+            # Tentar ler o tempo de processamento do dialog
+            proc_info = _ler_status_processamento(consist_dialog)
+            api.log_progress(processo_id, f"Consistencia em andamento ({minutes}min)... {proc_info}")
             last_heartbeat = time.time()
-        
+
+        # Detectar que o processamento iniciou (tempo > 0:00:00)
+        if not processamento_iniciou:
+            for ctrl in consist_dialog.descendants():
+                txt = ctrl.window_text()
+                if 'Processamento' in txt and '0:00:00' not in txt:
+                    processamento_iniciou = True
+                    api.log_progress(processo_id, "Processamento de AIHs iniciado.")
+                    break
+
         # Verificar se apareceu um popup/dialog com OK
         for w in app.windows():
             for ctrl in w.descendants():
@@ -107,19 +157,27 @@ def execute(config, api, processo_id, app, main_window, toolbar):
                     time.sleep(1)
                     _fechar_dialog(app, api, processo_id)
                     return True
-        
-        # Verificar se o botao Consistir voltou a ficar habilitado
-        # (indica que terminou sem popup de OK)
-        try:
-            if consistir_btn.is_enabled():
-                # Checar se tem texto no historico
-                api.log_progress(processo_id, f"Consistencia parece ter concluido em {elapsed}s (~{elapsed//60}min).")
-                _fechar_dialog(app, api, processo_id)
-                return True
-        except Exception:
-            pass
-    
+
+        # Verificar se o status voltou a "Preparado" (indica que terminou)
+        if processamento_iniciou:
+            for ctrl in consist_dialog.descendants():
+                txt = ctrl.window_text()
+                if 'Preparado' in txt:
+                    api.log_progress(processo_id, f"Consistencia concluida em {elapsed}s (~{elapsed//60}min)!")
+                    _fechar_dialog(app, api, processo_id)
+                    return True
+
     raise TimeoutError(f"Consistencia nao concluiu em {timeout} segundos ({timeout//3600}h).")
+
+
+def _ler_status_processamento(dialog):
+    """Le informacoes de status do dialog (tempo de processamento, total, etc)."""
+    info_parts = []
+    for ctrl in dialog.descendants():
+        txt = ctrl.window_text()
+        if any(kw in txt for kw in ['Processamento', 'Total', 'Preparado', 'Processando']):
+            info_parts.append(txt.strip())
+    return ' | '.join(info_parts) if info_parts else ''
 
 
 def _fechar_dialog(app, api, processo_id):
