@@ -94,19 +94,15 @@ def execute(config, api, processo_id, app, main_window, toolbar):
             if ok_found:
                 break
 
-        # Verificar "Fim" no historico (indica que processamento terminou)
-        for ctrl in consist_dialog.descendants():
-            txt = ctrl.window_text()
-            if not txt:
-                continue
-            # "Fim" no historico do processamento
-            if 'Fim' in txt and ('Inicio' in txt or 'Total' in txt or 'Abrindo' in txt):
-                api.log_progress(processo_id, f"Consistencia concluida em {elapsed}s! (detectado 'Fim' no historico)")
-                _fechar_dialog(app, api, processo_id)
-                return True
+        # Verificar conclusao via Win32 API (le TRichEdit e TLabel invisiveis ao pywinauto)
+        from utils.window_utils import verificar_conclusao_win32
+        conclu_txt = verificar_conclusao_win32(app, ['Conclu', 'Fim'])
+        if conclu_txt:
+            api.log_progress(processo_id, f"Consistencia concluida em {elapsed}s! (detectado: '{conclu_txt[:80]}')")
+            _fechar_dialog(app, api, processo_id)
+            return True
 
         # Verificar se apareceu "Preparado" ou "Selecione" — dados carregados mas nao processou
-        # Isso pode acontecer se o 1o clique so carregou os dados. Nesse caso, clicar novamente.
         if not ja_clicou_segunda_vez and elapsed > 10:
             for ctrl in consist_dialog.descendants():
                 txt = ctrl.window_text()

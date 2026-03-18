@@ -114,17 +114,15 @@ def execute(config, api, processo_id, app, main_window, toolbar):
                     _fechar_dialog(app, api, processo_id)
                     return True
 
-        # Verificar "Fim" no historico
-        for ctrl in apurar_dialog.descendants():
-            txt = ctrl.window_text()
-            if not txt:
-                continue
-            if 'Fim' in txt and ('Inicio' in txt or 'Total' in txt or 'Abrindo' in txt):
-                api.log_progress(processo_id, f"Apuracao concluida em {elapsed}s! (detectado 'Fim')")
-                _fechar_dialog(app, api, processo_id)
-                return True
+        # Verificar conclusao via Win32 API (le TRichEdit e TLabel invisiveis ao pywinauto)
+        from utils.window_utils import verificar_conclusao_win32
+        conclu_txt = verificar_conclusao_win32(app, ['Conclu', 'Fim Valor'])
+        if conclu_txt:
+            api.log_progress(processo_id, f"Apuracao concluida em {elapsed}s! (detectado: '{conclu_txt[:80]}')")
+            _fechar_dialog(app, api, processo_id)
+            return True
 
-        # Se "Preparado"/"Selecione" aparecer sem "Fim", dados carregaram mas nao processou
+        # Se "Preparado"/"Selecione" aparecer, dados carregaram mas nao processou
         if not ja_clicou_segunda_vez and elapsed > 10:
             for ctrl in apurar_dialog.descendants():
                 txt = ctrl.window_text()

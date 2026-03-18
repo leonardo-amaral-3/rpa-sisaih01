@@ -1,6 +1,56 @@
+import ctypes
+from ctypes import wintypes
 import time
 from pywinauto import keyboard
 from pywinauto import mouse as pwa_mouse
+
+
+# Win32 API para ler controles Delphi invisiveis ao pywinauto
+_user32 = ctypes.windll.user32
+_WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+_WM_GETTEXT = 0x000D
+_WM_GETTEXTLENGTH = 0x000E
+
+
+def verificar_conclusao_win32(app, keywords_conclusao=None):
+    """
+    Verifica se algum controle filho (incluindo TRichEdit, TLabel sem HWND visivel ao pywinauto)
+    contem texto de conclusao, usando a API Win32 diretamente.
+
+    keywords_conclusao: lista de textos a procurar (ex: ['Fim', 'Conclu'])
+    Retorna o texto encontrado ou None.
+    """
+    if keywords_conclusao is None:
+        keywords_conclusao = ['Conclu', 'Fim Valor']
+
+    result = [None]
+
+    @_WNDENUMPROC
+    def _enum_children(hwnd, _lparam):
+        try:
+            length = _user32.SendMessageW(hwnd, _WM_GETTEXTLENGTH, 0, 0)
+            if length > 0:
+                buf = ctypes.create_unicode_buffer(length + 1)
+                _user32.SendMessageW(hwnd, _WM_GETTEXT, length + 1, buf)
+                txt = buf.value
+                for kw in keywords_conclusao:
+                    if kw in txt:
+                        result[0] = txt[:200]  # Truncar para log
+                        return False  # Para a enumeracao
+        except Exception:
+            pass
+        return True
+
+    # Enumerar filhos de TODAS as janelas top-level do app
+    for w in app.windows():
+        try:
+            _user32.EnumChildWindows(w.handle, _enum_children, 0)
+            if result[0]:
+                return result[0]
+        except Exception:
+            pass
+
+    return None
 
 
 def fechar_dialog_robusto(app, api, processo_id, dialog_keywords, step_label, max_retries=3):
