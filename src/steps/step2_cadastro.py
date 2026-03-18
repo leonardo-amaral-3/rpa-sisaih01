@@ -122,7 +122,7 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
         for ctrl in w.descendants():
             txt = ctrl.window_text()
             cls = ctrl.class_name()
-            if 'Fechar' in txt and 'Button' in cls:
+            if 'Fechar' in txt and ('Button' in cls or 'Btn' in cls):
                 ctrl.click_input()
                 fechar_found = True
                 break

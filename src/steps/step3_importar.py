@@ -16,18 +16,18 @@ def navigate_to_importar_producao(main_window, toolbar):
     """
     main_window.set_focus()
     time.sleep(0.3)
-    
+
     # 1. Clicar no botao MANUTENCAO
     btn = toolbar.button(MENU_MANUTENCAO_INDEX)
     btn.click()
     time.sleep(0.5)
-    
+
     # 2. O dropdown mostra: IMPORTAR, EXCLUIR PRODUCAO, etc.
     #    IMPORTAR eh o primeiro item -> nao precisa de DOWN
-    #    Mas IMPORTAR tem um submenu (seta >) -> precisa RIGHT
-    keyboard.send_keys("{ENTER}")  # Seleciona IMPORTAR (1o item)
+    #    Mas IMPORTAR tem um submenu (seta >) -> precisa RIGHT pra expandir
+    keyboard.send_keys("{RIGHT}")  # Expande submenu de IMPORTAR
     time.sleep(0.3)
-    
+
     # 3. Submenu abre: PRODUCAO, CEP, MODULO AUTORIZADOR, HABILITACAO
     #    PRODUCAO eh o primeiro -> ENTER direto
     keyboard.send_keys("{ENTER}")  # Seleciona PRODUCAO
@@ -91,19 +91,46 @@ def execute(config, api, processo_id, app, main_window, toolbar, file_path):
     api.log_progress(processo_id, f"Arquivo selecionado: {file_path}")
     
     # 4. Clicar no botao "Importar"
+    # SISAIH01 eh Delphi — botoes podem ser TButton, TBitBtn, TSpeedButton, etc.
+    # Em TBitBtn com icone, window_text() pode retornar vazio.
     importar_btn = None
-    for w in app.windows():
-        for ctrl in w.descendants():
-            txt = ctrl.window_text()
-            cls = ctrl.class_name()
-            if 'Importar' in txt and 'Button' in cls:
-                importar_btn = ctrl
-                break
-        if importar_btn:
+
+    # Debug: listar TODOS os controles do dialog para diagnostico
+    all_controls = []
+    for ctrl in import_dialog.descendants():
+        txt = ctrl.window_text()
+        cls = ctrl.class_name()
+        all_controls.append(f"'{txt}' ({cls})")
+    api.log_progress(processo_id, f"Controles no dialog: {'; '.join(all_controls)}", level="DEBUG")
+
+    # Estrategia 1: buscar por texto "Importar" + classe de botao
+    for ctrl in import_dialog.descendants():
+        txt = ctrl.window_text()
+        cls = ctrl.class_name()
+        is_button = ('Button' in cls or 'Btn' in cls)
+        if 'Importar' in txt and is_button:
+            importar_btn = ctrl
             break
-    
+
+    # Estrategia 2: buscar TBitBtn no dialog (pode ter texto vazio mas ser o botao certo)
     if not importar_btn:
-        raise Exception("Botao 'Importar' nao encontrado.")
+        for ctrl in import_dialog.descendants():
+            if ctrl.class_name() == 'TBitBtn':
+                importar_btn = ctrl
+                api.log_progress(processo_id, f"Botao encontrado via classe TBitBtn (texto: '{ctrl.window_text()}')")
+                break
+
+    # Estrategia 3: buscar qualquer controle com texto "Importar" (pode ser TPanel, TLabel, etc)
+    if not importar_btn:
+        for ctrl in import_dialog.descendants():
+            txt = ctrl.window_text()
+            if 'Importar' in txt and ctrl.class_name() not in ('TLabel', 'TStaticText'):
+                importar_btn = ctrl
+                api.log_progress(processo_id, f"Botao encontrado por texto em {ctrl.class_name()}")
+                break
+
+    if not importar_btn:
+        raise Exception(f"Botao 'Importar' nao encontrado. Controles: {'; '.join(all_controls)}")
     
     api.log_progress(processo_id, "Clicando em Importar... Aguardando processamento.")
     importar_btn.click_input()
@@ -125,7 +152,7 @@ def execute(config, api, processo_id, app, main_window, toolbar, file_path):
             for ctrl in w.descendants():
                 txt = ctrl.window_text()
                 cls = ctrl.class_name()
-                if txt == 'OK' and 'Button' in cls:
+                if txt == 'OK' and ('Button' in cls or 'Btn' in cls):
                     api.log_progress(processo_id, "Importacao concluida! Clicando OK.")
                     ctrl.click_input()
                     time.sleep(1)
@@ -153,7 +180,7 @@ def _fechar_dialog(app, api, processo_id):
         for ctrl in w.descendants():
             txt = ctrl.window_text()
             cls = ctrl.class_name()
-            if 'Fechar' in txt and 'Button' in cls:
+            if 'Fechar' in txt and ('Button' in cls or 'Btn' in cls):
                 ctrl.click_input()
                 time.sleep(0.5)
                 return

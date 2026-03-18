@@ -25,7 +25,7 @@ def execute(config, api, processo_id, app, main_window, toolbar):
         for ctrl in w.descendants():
             txt = ctrl.window_text()
             cls = ctrl.class_name()
-            if txt == 'Consistir' and 'Button' in cls:
+            if txt == 'Consistir' and ('Button' in cls or 'Btn' in cls):
                 consistir_btn = ctrl
                 break
         if consistir_btn:
@@ -37,7 +37,7 @@ def execute(config, api, processo_id, app, main_window, toolbar):
             for ctrl in w.descendants():
                 txt = ctrl.window_text()
                 cls = ctrl.class_name()
-                if 'Consistir' in txt and 'Button' in cls:
+                if 'Consistir' in txt and ('Button' in cls or 'Btn' in cls):
                     consistir_btn = ctrl
                     break
             if consistir_btn:
@@ -78,7 +78,7 @@ def execute(config, api, processo_id, app, main_window, toolbar):
             for ctrl in w.descendants():
                 txt = ctrl.window_text()
                 cls = ctrl.class_name()
-                if txt == 'OK' and 'Button' in cls:
+                if txt == 'OK' and ('Button' in cls or 'Btn' in cls):
                     api.log_progress(processo_id, f"Consistencia concluida em {elapsed}s (~{elapsed//60}min)!")
                     ctrl.click_input()
                     time.sleep(1)
@@ -108,7 +108,7 @@ def _fechar_dialog(app, api, processo_id):
         for ctrl in w.descendants():
             txt = ctrl.window_text()
             cls = ctrl.class_name()
-            if 'Fechar' in txt and 'Button' in cls:
+            if 'Fechar' in txt and ('Button' in cls or 'Btn' in cls):
                 ctrl.click_input()
                 time.sleep(0.5)
                 api.log_progress(processo_id, "Etapa 4 concluida: Consistencia finalizada com sucesso.")
