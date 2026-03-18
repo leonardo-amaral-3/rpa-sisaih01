@@ -1,3 +1,4 @@
+import os
 import re
 import time
 from pywinauto import keyboard
@@ -68,6 +69,7 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
 
     # 3. Gerar o caminho do arquivo de exportacao
     export_dir = config.get("export", {}).get("dir", r"C:\exports")
+    os.makedirs(export_dir, exist_ok=True)
     cnes = hospital_data.get("cnes", "0000000")
     cnes_clean = re.sub(r'\D', '', cnes)  # "227023-4" -> "2270234"
     competencia = _ler_competencia(main_window)
