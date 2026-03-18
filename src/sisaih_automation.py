@@ -5,7 +5,7 @@ import yaml
 import traceback
 
 from utils.api_client import ApiClient
-from steps import step1_check_open, step2_cadastro, step3_importar, step4_consistir
+from steps import step1_check_open, step2_cadastro, step3_importar, step4_consistir, step5_apurar, step6_exportar_sihd
 from vigilante import Vigilante
 
 def load_config(config_path="config.yaml"):
@@ -40,7 +40,13 @@ def run_automation(processo_id, file_path, hospital_data, is_local_mode):
         
         # Step 4: Processamento -> Consistir Producao
         step4_consistir.execute(config, api, processo_id, app, main_window, toolbar)
-        
+
+        # Step 5: Processamento -> Apurar Previa
+        step5_apurar.execute(config, api, processo_id, app, main_window, toolbar)
+
+        # Step 6: Processamento -> Exportar para SIHD
+        step6_exportar_sihd.execute(config, api, processo_id, app, main_window, toolbar, hospital_data)
+
         api.notify_completion(processo_id, status="COMPLETED")
         
     except Exception as e:

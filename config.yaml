@@ -6,6 +6,11 @@ timeouts:
   app_start: 30
   import_file: 600
   consistir: 7200
+  apurar: 3600
+  exportar: 300
+
+export:
+  dir: 'C:\exports'
 
 api:
   base_url: 'http://localhost:3333'

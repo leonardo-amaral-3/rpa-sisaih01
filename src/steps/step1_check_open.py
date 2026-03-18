@@ -20,44 +20,46 @@ def find_main_toolbar(win):
     raise Exception("Toolbar principal (menu) nao encontrada na janela do SISAIH01.")
 
 
-def click_menu(win, toolbar, button_index, menu_item_text=None):
+def click_menu(win, toolbar, button_index, menu_item_text=None, downs=None):
     """
     Clica em um botao da toolbar (menu principal) e opcionalmente
     seleciona um item do popup menu via teclado.
-    
+
     button_index: indice do botao na toolbar (0=CADASTRO, 1=PRODUCAO, 2=PROCESSAMENTO...)
     menu_item_text: texto do item no popup menu (ex: 'HOSPITAL')
+    downs: numero explicito de vezes para pressionar DOWN antes de ENTER.
+           Se None, usa o mapa interno (so funciona para itens de CADASTRO).
     """
     win.set_focus()
     time.sleep(0.3)
-    
+
     # Clicar no botao do menu principal
     btn = toolbar.button(button_index)
     btn.click()
     time.sleep(0.5)
-    
+
     if menu_item_text:
         # Usar teclado pra navegar no popup menu aberto
-        # O item desejado esta no submenu. Usamos as setas + Enter.
         # Mapeamento dos itens do submenu CADASTRO:
         #   HOSPITAL = 1o item (0 vezes DOWN + ENTER)
         #   PROFISSIONAIS = 2o item (1x DOWN + ENTER)
         #   TERCEIROS = 3o item (2x DOWN + ENTER)
         #   OPERADORES = 4o item (3x DOWN + ENTER)
-        
+
         menu_items_map = {
             "HOSPITAL": 0,
             "PROFISSIONAIS": 1,
             "TERCEIROS": 2,
             "OPERADORES": 3,
         }
-        
-        downs = menu_items_map.get(menu_item_text.upper(), 0)
-        
+
+        if downs is None:
+            downs = menu_items_map.get(menu_item_text.upper(), 0)
+
         for _ in range(downs):
             keyboard.send_keys("{DOWN}")
             time.sleep(0.1)
-        
+
         keyboard.send_keys("{ENTER}")
         time.sleep(1)
 
@@ -101,7 +103,7 @@ def execute(config, api, processo_id):
     # Lista abrangente de keywords para pegar qualquer dialog residual do SISAIH01
     residual_keywords = [
         'Cadastro', 'Importa', 'Consist', 'Hospital', 'Produc',
-        'Manutenc', 'Processamento', 'Seleciona',
+        'Manutenc', 'Processamento', 'Seleciona', 'Apur', 'Exporta',
     ]
     for w in app.windows():
         title = w.window_text()
