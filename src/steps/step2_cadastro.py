@@ -116,9 +116,44 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
     time.sleep(2)
     
     # 8. Fechar o formulario de cadastro
+    # O formulario de cadastro eh embutido na janela principal (nao eh dialog separado),
+    # entao buscamos o botao "Fechar" nos descendants de todas as janelas.
     api.log_progress(processo_id, "Fechando formulario de cadastro...")
-    from utils.window_utils import fechar_dialog_robusto
-    fechar_dialog_robusto(app, api, processo_id, ['Hospital'], 'Etapa 2')
+
+    # Primeiro verificar se apareceu popup de sucesso e fechar
+    time.sleep(0.5)
+    for w in app.windows():
+        for ctrl in w.descendants():
+            txt = ctrl.window_text()
+            cls = ctrl.class_name()
+            if txt == 'OK' and ('Button' in cls or 'Btn' in cls):
+                ctrl.click_input()
+                time.sleep(0.5)
+                break
+
+    # Agora fechar o formulario: buscar botao "Fechar" que eh TBitBtn
+    fechar_found = False
+    for w in app.windows():
+        for ctrl in w.descendants():
+            txt = ctrl.window_text()
+            cls = ctrl.class_name()
+            if 'Fechar' in txt and ('Button' in cls or 'Btn' in cls):
+                try:
+                    ctrl.click_input()
+                    fechar_found = True
+                    api.log_progress(processo_id, f"Fechar clicado: '{txt}' ({cls})", level="DEBUG")
+                except Exception:
+                    pass
+                break
+        if fechar_found:
+            break
+
+    if not fechar_found:
+        # Fallback: ESC fecha formularios Delphi
+        kb.send_keys("{ESC}")
+        api.log_progress(processo_id, "Fechar nao encontrado, ESC enviado.", level="DEBUG")
+
+    time.sleep(1)
 
     api.log_progress(processo_id, "Etapa 2 concluida: Cadastro de Hospital salvo com sucesso.")
     return True

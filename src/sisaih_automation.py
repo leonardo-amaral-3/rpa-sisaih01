@@ -24,18 +24,39 @@ def _fechar_dialogs_residuais(app, api, processo_id, main_window):
     Fecha todos os dialogs/janelas abertas que nao sao a janela principal do SISAIH01.
     Funciona como rede de seguranca entre steps.
     """
-    main_title = main_window.window_text()
+    main_handle = main_window.handle
     fechados = 0
-    for attempt in range(5):
+
+    for attempt in range(3):
         found_extra = False
         for w in app.windows():
-            title = w.window_text()
-            if not title or title == main_title:
+            # Pular janela principal (por handle, nao por titulo)
+            if w.handle == main_handle:
                 continue
-            # Eh um dialog residual — tentar fechar
+
+            title = w.window_text()
+            if not title:
+                continue
+
+            # Pular janelas do sistema / fantasma
+            if 'GDI+' in title or 'Default IME' in title:
+                continue
+
+            # Pular janelas com rect invalido (0,0,0,0) — fantasmas
+            try:
+                r = w.rectangle()
+                if r.right - r.left <= 1 or r.bottom - r.top <= 1:
+                    continue
+            except Exception:
+                continue
+
+            # Pular se o titulo contem SISAIH e parece ser a janela principal
+            if 'SISAIH01' in title and 'Programa' in title:
+                continue
+
             found_extra = True
             api.log_progress(processo_id,
-                f"Dialog residual encontrado: '{title}'. Fechando...", level="DEBUG")
+                f"Dialog residual: '{title}'. Fechando...", level="DEBUG")
 
             # Tentar clicar Fechar (HWND)
             clicked = False
@@ -53,16 +74,7 @@ def _fechar_dialogs_residuais(app, api, processo_id, main_window):
             # Fallback: coordenada no canto inferior direito
             if not clicked:
                 from utils.window_utils import _click_fechar_by_dialog_rect
-                clicked = _click_fechar_by_dialog_rect(w, api, processo_id)
-
-            # Fallback: ESC
-            if not clicked:
-                try:
-                    w.set_focus()
-                    time.sleep(0.2)
-                except Exception:
-                    pass
-                keyboard.send_keys("{ESC}")
+                _click_fechar_by_dialog_rect(w, api, processo_id)
 
             time.sleep(0.5)
             fechados += 1
