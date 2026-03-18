@@ -97,12 +97,18 @@ def execute(config, api, processo_id):
     
     api.log_progress(processo_id, f"Janela principal: '{main_window.window_text()}' (Class: {main_window.class_name()})")
     
-    # 3. Fechar qualquer formulario que esteja aberto na frente (ex: Cadastro de Hospital)
+    # 3. Fechar qualquer formulario que esteja aberto na frente
+    # Lista abrangente de keywords para pegar qualquer dialog residual do SISAIH01
+    residual_keywords = [
+        'Cadastro', 'Importa', 'Consist', 'Hospital', 'Produc',
+        'Manutenc', 'Processamento', 'Seleciona',
+    ]
     for w in app.windows():
         title = w.window_text()
-        if w.class_name() != 'TFrmPrincipal' and w.class_name() != 'TApplication' and title and \
-           any(kw in title for kw in ['Cadastro', 'Importar', 'Consistir', 'Hospital']):
-            api.log_progress(processo_id, f"Fechando formulario residual: '{title}'")
+        cls = w.class_name()
+        if cls not in ('TFrmPrincipal', 'TApplication') and title and \
+           any(kw.lower() in title.lower() for kw in residual_keywords):
+            api.log_progress(processo_id, f"Fechando formulario residual: '{title}' ({cls})")
             try:
                 w.close()
                 time.sleep(0.5)
