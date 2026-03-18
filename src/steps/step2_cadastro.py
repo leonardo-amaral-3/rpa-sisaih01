@@ -115,24 +115,10 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
     kb.send_keys("{F5}")
     time.sleep(2)
     
-    # 8. Fechar o formulario
+    # 8. Fechar o formulario de cadastro
     api.log_progress(processo_id, "Fechando formulario de cadastro...")
-    fechar_found = False
-    for w in app.windows():
-        for ctrl in w.descendants():
-            txt = ctrl.window_text()
-            cls = ctrl.class_name()
-            if 'Fechar' in txt and ('Button' in cls or 'Btn' in cls):
-                ctrl.click_input()
-                fechar_found = True
-                break
-        if fechar_found:
-            break
-    
-    if not fechar_found:
-        kb.send_keys("{ESC}")
-    
-    time.sleep(1)
-    
+    from utils.window_utils import fechar_dialog_robusto
+    fechar_dialog_robusto(app, api, processo_id, ['Hospital'], 'Etapa 2')
+
     api.log_progress(processo_id, "Etapa 2 concluida: Cadastro de Hospital salvo com sucesso.")
     return True

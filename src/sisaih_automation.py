@@ -1,8 +1,12 @@
 import argparse
 import json
 import os
+import re
+import time
 import yaml
 import traceback
+
+from pywinauto import keyboard
 
 from utils.api_client import ApiClient
 from steps import step1_check_open, step2_cadastro, step3_importar, step4_consistir, step5_apurar, step6_exportar_sihd
@@ -13,6 +17,61 @@ def load_config(config_path="config.yaml"):
     full_path = os.path.join(base_dir, config_path)
     with open(full_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def _fechar_dialogs_residuais(app, api, processo_id, main_window):
+    """
+    Fecha todos os dialogs/janelas abertas que nao sao a janela principal do SISAIH01.
+    Funciona como rede de seguranca entre steps.
+    """
+    main_title = main_window.window_text()
+    fechados = 0
+    for attempt in range(5):
+        found_extra = False
+        for w in app.windows():
+            title = w.window_text()
+            if not title or title == main_title:
+                continue
+            # Eh um dialog residual — tentar fechar
+            found_extra = True
+            api.log_progress(processo_id,
+                f"Dialog residual encontrado: '{title}'. Fechando...", level="DEBUG")
+
+            # Tentar clicar Fechar (HWND)
+            clicked = False
+            for ctrl in w.descendants():
+                txt = ctrl.window_text()
+                cls = ctrl.class_name()
+                if 'Fechar' in txt and ('Button' in cls or 'Btn' in cls):
+                    try:
+                        ctrl.click_input()
+                        clicked = True
+                    except Exception:
+                        pass
+                    break
+
+            # Fallback: coordenada no canto inferior direito
+            if not clicked:
+                from utils.window_utils import _click_fechar_by_dialog_rect
+                clicked = _click_fechar_by_dialog_rect(w, api, processo_id)
+
+            # Fallback: ESC
+            if not clicked:
+                try:
+                    w.set_focus()
+                    time.sleep(0.2)
+                except Exception:
+                    pass
+                keyboard.send_keys("{ESC}")
+
+            time.sleep(0.5)
+            fechados += 1
+
+        if not found_extra:
+            break
+
+    if fechados > 0:
+        api.log_progress(processo_id, f"Fechados {fechados} dialog(s) residual(is).")
 
 def run_automation(processo_id, file_path, hospital_data, is_local_mode):
     config = load_config()
@@ -31,21 +90,26 @@ def run_automation(processo_id, file_path, hospital_data, is_local_mode):
         
         # Step 2: Cadastros -> Hospitais
         step2_cadastro.execute(config, api, processo_id, app, main_window, toolbar, hospital_data)
-        
+        _fechar_dialogs_residuais(app, api, processo_id, main_window)
+
         if vigilante.error_detected:
             raise Exception(f"Vigilante abortou execucao: {vigilante.error_detected}")
-            
+
         # Step 3: Manutencao -> Importar -> Producao
         step3_importar.execute(config, api, processo_id, app, main_window, toolbar, file_path)
-        
+        _fechar_dialogs_residuais(app, api, processo_id, main_window)
+
         # Step 4: Processamento -> Consistir Producao
         step4_consistir.execute(config, api, processo_id, app, main_window, toolbar)
+        _fechar_dialogs_residuais(app, api, processo_id, main_window)
 
         # Step 5: Processamento -> Apurar Previa
         step5_apurar.execute(config, api, processo_id, app, main_window, toolbar)
+        _fechar_dialogs_residuais(app, api, processo_id, main_window)
 
         # Step 6: Processamento -> Exportar para SIHD
         step6_exportar_sihd.execute(config, api, processo_id, app, main_window, toolbar, hospital_data, file_path)
+        _fechar_dialogs_residuais(app, api, processo_id, main_window)
 
         api.notify_completion(processo_id, status="COMPLETED")
         
