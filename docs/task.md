@@ -7,8 +7,8 @@ Este documento acompanha o progresso da implementação da arquitetura definida 
 - [x] Implementar utilitários base (`api_client.py`, `wait.py`)
 - [x] Step 1: `step1_check_open.py` — ✅ Testado na VM, conecta via `TFrmPrincipal`
 - [x] Step 2: `step2_cadastro.py` — ✅ Testado na VM, preenche 14 TDBEdit + 1 TDBComboBox
-- [/] Step 3: `step3_importar.py` — Implementado, aguardando teste na VM
-- [ ] Step 4: `step4_consistir.py` — Boilerplate escrito, falta ajustar seletores
+- [x] Step 3: `step3_importar.py` — ✅ Testado na VM, importa arquivo via TBitBtn + fallback por classe
+- [x] Step 4: `step4_consistir.py` — ✅ Testado na VM, mesma detecção robusta de botões Delphi
 - [x] Thread Vigilante (`vigilante.py`)
 - [x] Orquestrador (`sisaih_automation.py`)
 - [ ] Padronização de arquivos (input/output paths) integrada no Worker

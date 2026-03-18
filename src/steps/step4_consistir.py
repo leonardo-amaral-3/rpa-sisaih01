@@ -43,7 +43,19 @@ def execute(config, api, processo_id, app, main_window, toolbar):
     # O botao pode ser TBitBtn, TSpeedButton, TToolButton, ou dentro de uma TToolBar.
     consistir_btn = None
 
-    # Debug: listar TODOS os controles com texto em todas as janelas
+    # Debug: listar TODOS os controles (inclusive sem texto) no dialog de consistencia
+    all_in_dialog = []
+    for ctrl in consist_dialog.descendants():
+        txt = ctrl.window_text()
+        cls = ctrl.class_name()
+        try:
+            rect = ctrl.rectangle()
+            all_in_dialog.append(f"'{txt}' ({cls}) rect=({rect.left},{rect.top},{rect.right},{rect.bottom})")
+        except Exception:
+            all_in_dialog.append(f"'{txt}' ({cls})")
+    api.log_progress(processo_id, f"TODOS descendentes do dialog (com rect): {'; '.join(all_in_dialog)}", level="DEBUG")
+
+    # Debug: listar controles com texto em todas as janelas
     all_with_text = []
     for w in app.windows():
         for ctrl in w.descendants():
@@ -78,6 +90,61 @@ def execute(config, api, processo_id, app, main_window, toolbar):
                 if consistir_btn:
                     break
             if consistir_btn:
+                break
+
+    # Estrategia 3: Encontrar por eliminacao na toolbar do dialog
+    # O botao Consistir pode ter window_text() vazio (Delphi TBitBtn com glyph)
+    # A toolbar do dialog contem: Consistir | Todas | Selecionar | Imprimir | Fechar
+    if not consistir_btn:
+        api.log_progress(processo_id, "Estrategia 3: buscando Consistir por eliminacao na toolbar...", level="DEBUG")
+        known_btn_texts = {'Selecionar', '&Selecionar', 'Fechar', '&Fechar',
+                           'Imprimir', '&Imprimir', 'Gravar', '&Gravar'}
+        # Encontrar a toolbar que contem Selecionar ou Todas (mesma toolbar do Consistir)
+        target_toolbar = None
+        for ctrl in consist_dialog.descendants():
+            if ctrl.class_name() == 'TToolBar':
+                children = ctrl.children()
+                child_info = [(c.window_text(), c.class_name()) for c in children]
+                api.log_progress(processo_id, f"TToolBar filhos: {child_info}", level="DEBUG")
+                if any('Selecionar' in c.window_text() or 'Todas' in c.window_text() for c in children):
+                    target_toolbar = ctrl
+                    api.log_progress(processo_id, "Toolbar com Selecionar/Todas encontrada!", level="DEBUG")
+                    break
+
+        if target_toolbar:
+            children = target_toolbar.children()
+            for child in children:
+                child_cls = child.class_name()
+                child_txt = child.window_text().strip()
+                if child_cls in ('TBitBtn', 'TSpeedButton', 'TToolButton'):
+                    if child_txt not in known_btn_texts:
+                        try:
+                            rect = child.rectangle()
+                            api.log_progress(processo_id,
+                                f"Candidato Consistir: texto='{child_txt}', classe={child_cls}, "
+                                f"rect=({rect.left},{rect.top},{rect.right},{rect.bottom})")
+                        except Exception:
+                            api.log_progress(processo_id,
+                                f"Candidato Consistir: texto='{child_txt}', classe={child_cls}")
+                        consistir_btn = child
+                        break
+
+    # Estrategia 4: Encontrar o primeiro TBitBtn no dialog com texto vazio
+    # (fallback caso a toolbar nao seja encontrada como parent direto)
+    if not consistir_btn:
+        api.log_progress(processo_id, "Estrategia 4: buscando primeiro TBitBtn sem texto no dialog...", level="DEBUG")
+        for ctrl in consist_dialog.descendants():
+            cls = ctrl.class_name()
+            txt = ctrl.window_text().strip()
+            if cls in ('TBitBtn', 'TSpeedButton') and not txt:
+                try:
+                    rect = ctrl.rectangle()
+                    api.log_progress(processo_id,
+                        f"TBitBtn sem texto encontrado: classe={cls}, "
+                        f"rect=({rect.left},{rect.top},{rect.right},{rect.bottom})")
+                except Exception:
+                    pass
+                consistir_btn = ctrl
                 break
 
     if not consistir_btn:
