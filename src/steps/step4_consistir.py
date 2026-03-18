@@ -38,43 +38,28 @@ def execute(config, api, processo_id, app, main_window, toolbar):
         all_controls.append(f"'{txt}' ({cls})")
     api.log_progress(processo_id, f"Controles no dialog: {'; '.join(all_controls)}", level="DEBUG")
 
-    # 3. Encontrar o botao "Consistir" com fallback progressivo
+    # 3. Encontrar o botao "Consistir"
+    # No SISAIH01 o botao pode estar FORA do dialog interno (em um painel pai),
+    # entao buscamos em TODAS as janelas do app.
     consistir_btn = None
+    all_bitbtns = []
 
-    # Estrategia 1: texto exato + classe de botao
-    for ctrl in consist_dialog.descendants():
-        txt = ctrl.window_text()
-        cls = ctrl.class_name()
-        if 'Consistir' in txt and ('Button' in cls or 'Btn' in cls):
-            consistir_btn = ctrl
+    for w in app.windows():
+        for ctrl in w.descendants():
+            txt = ctrl.window_text()
+            cls = ctrl.class_name()
+            if cls == 'TBitBtn':
+                all_bitbtns.append(f"'{txt}' ({cls}) pos={ctrl.rectangle()}")
+            if 'Consistir' in txt and ('Button' in cls or 'Btn' in cls):
+                consistir_btn = ctrl
+                break
+        if consistir_btn:
             break
 
-    # Estrategia 2: TBitBtn no dialog — pular Fechar/Selecionar, pegar o correto
-    if not consistir_btn:
-        bitbtns = []
-        for ctrl in consist_dialog.descendants():
-            if ctrl.class_name() == 'TBitBtn':
-                txt = ctrl.window_text()
-                bitbtns.append(f"'{txt}' pos={ctrl.rectangle()}")
-                # Pular botoes que claramente nao sao Consistir
-                if txt and any(kw in txt for kw in ['Fechar', 'Close', 'Selecionar', 'Selecione', '&Fechar']):
-                    continue
-                consistir_btn = ctrl
-                api.log_progress(processo_id, f"Botao encontrado via TBitBtn (texto: '{txt}')")
-                break
-        api.log_progress(processo_id, f"TBitBtns no dialog: {'; '.join(bitbtns)}", level="DEBUG")
-
-    # Estrategia 3: qualquer controle com texto "Consistir"
-    if not consistir_btn:
-        for ctrl in consist_dialog.descendants():
-            txt = ctrl.window_text()
-            if 'Consistir' in txt and ctrl.class_name() not in ('TLabel', 'TStaticText'):
-                consistir_btn = ctrl
-                api.log_progress(processo_id, f"Botao encontrado por texto em {ctrl.class_name()}")
-                break
+    api.log_progress(processo_id, f"TBitBtns encontrados: {'; '.join(all_bitbtns)}", level="DEBUG")
 
     if not consistir_btn:
-        raise Exception(f"Botao 'Consistir' nao encontrado. Controles: {'; '.join(all_controls)}")
+        raise Exception(f"Botao 'Consistir' nao encontrado. TBitBtns: {'; '.join(all_bitbtns)}")
 
     # === FASE 1: Primeiro clique — Abre banco de dados e carrega AIHs ===
     api.log_progress(processo_id, "Fase 1: Clicando em Consistir para abrir banco e carregar AIHs...")
