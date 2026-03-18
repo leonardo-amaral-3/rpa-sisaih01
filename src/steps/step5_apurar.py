@@ -8,7 +8,7 @@ MENU_PROCESSAMENTO_INDEX = 2
 def execute(config, api, processo_id, app, main_window, toolbar):
     """
     Etapa 5: PROCESSAMENTO -> APURAR PREVIA
-    Apura as AIHs consistidas. Pode levar bastante tempo.
+    Apura as AIHs consistidas.
     """
     api.log_progress(processo_id, "Iniciando Etapa 5: Apurar Previa")
 
@@ -32,15 +32,7 @@ def execute(config, api, processo_id, app, main_window, toolbar):
 
     api.log_progress(processo_id, f"Dialog encontrado: '{apurar_dialog.window_text()}'")
 
-    # Debug: logar rect do dialog e descendants
-    try:
-        dlg_rect = apurar_dialog.rectangle()
-        api.log_progress(processo_id,
-            f"Dialog rect: ({dlg_rect.left},{dlg_rect.top},{dlg_rect.right},{dlg_rect.bottom})",
-            level="DEBUG")
-    except Exception:
-        pass
-
+    # Debug: listar descendants
     all_in_dialog = []
     for ctrl in apurar_dialog.descendants():
         txt = ctrl.window_text()
@@ -54,9 +46,8 @@ def execute(config, api, processo_id, app, main_window, toolbar):
 
     # 3. Encontrar o botao "Apurar"
     apurar_btn = None
-    use_dialog_rect = False
 
-    # Estrategia 1: buscar por texto "Apurar" nos descendants (com HWND)
+    # Estrategia 1: texto "Apurar" nos descendants
     for ctrl in apurar_dialog.descendants():
         txt = ctrl.window_text()
         cls = ctrl.class_name()
@@ -65,7 +56,7 @@ def execute(config, api, processo_id, app, main_window, toolbar):
             api.log_progress(processo_id, f"Botao Apurar encontrado: '{txt}' ({cls})")
             break
 
-    # Estrategia 2: buscar TBitBtn desconhecido (excluindo Fechar/Imprimir)
+    # Estrategia 2: TBitBtn desconhecido
     if not apurar_btn:
         known_texts = {'Fechar', '&Fechar', 'Imprimir', '&Imprimir'}
         for ctrl in apurar_dialog.descendants():
@@ -76,12 +67,10 @@ def execute(config, api, processo_id, app, main_window, toolbar):
                 api.log_progress(processo_id, f"Candidato Apurar: '{txt}' ({cls})")
                 break
 
-    # Estrategia 3: Apurar eh TSpeedButton sem HWND.
-    # Usar o RECT DO DIALOG — botoes ficam no rodape, Apurar eh o mais à esquerda.
+    # Estrategia 3: dialog rect (fallback)
     if not apurar_btn:
-        use_dialog_rect = True
         api.log_progress(processo_id,
-            "Apurar nao tem HWND. Usando rect do dialog para clicar no rodape.", level="DEBUG")
+            "Apurar nao tem HWND. Usando rect do dialog.", level="DEBUG")
 
     def click_apurar():
         if apurar_btn:
@@ -90,77 +79,28 @@ def execute(config, api, processo_id, app, main_window, toolbar):
             from utils.window_utils import click_button_by_dialog_rect
             click_button_by_dialog_rect(apurar_dialog, api, processo_id, position="left")
 
-    # === FASE 1: Primeiro clique — carrega dados ===
-    api.log_progress(processo_id, "Fase 1: Clicando em Apurar para carregar dados...")
+    # 4. Clicar em Apurar (1 clique inicia todo o processamento)
+    api.log_progress(processo_id, "Clicando em Apurar...")
     click_apurar()
 
-    # Aguardar carregamento (status "Preparado" ou lista populada)
-    prep_timeout = config["timeouts"].get("apurar_preparar", 120)
-    start_prep = time.time()
-    preparado = False
-
-    api.log_progress(processo_id, f"Aguardando carregamento (timeout: {prep_timeout}s)...")
-
-    while time.time() - start_prep < prep_timeout:
-        time.sleep(2)
-
-        # Verificar popup OK (pode concluir direto sem fase 2)
-        for w in app.windows():
-            for ctrl in w.descendants():
-                txt = ctrl.window_text()
-                cls = ctrl.class_name()
-                if txt == 'OK' and ('Button' in cls or 'Btn' in cls):
-                    api.log_progress(processo_id, "Apuracao concluida (popup OK na fase 1)!")
-                    ctrl.click_input()
-                    time.sleep(1)
-                    _fechar_dialog(app, api, processo_id)
-                    return True
-
-        for ctrl in apurar_dialog.descendants():
-            txt = ctrl.window_text()
-            if 'Preparado' in txt or 'Selecione' in txt:
-                preparado = True
-                break
-        if preparado:
-            break
-
-    if not preparado:
-        api.log_progress(processo_id, "Status 'Preparado' nao detectado, tentando continuar...", level="WARNING")
-
-    api.log_progress(processo_id, "Dados carregados.")
-    time.sleep(1)
-
-    # === FASE 2: Segundo clique — inicia apuracao ===
-    api.log_progress(processo_id, "Fase 2: Clicando em Apurar para iniciar processamento...")
-    click_apurar()
-
-    # Aguardar conclusao
+    # 5. Monitorar conclusao
     timeout = config["timeouts"].get("apurar", 3600)
     start_time = time.time()
-    heartbeat_interval = 60
+    heartbeat_interval = 30
     last_heartbeat = start_time
-    processamento_iniciou = False
+    ja_clicou_segunda_vez = False
 
-    api.log_progress(processo_id, f"Apuracao em andamento (timeout: {timeout}s = {timeout//60}min)...")
-    time.sleep(10)
+    api.log_progress(processo_id, f"Apuracao em andamento (timeout: {timeout}s)...")
 
     while time.time() - start_time < timeout:
-        time.sleep(5)
+        time.sleep(3)
         elapsed = int(time.time() - start_time)
 
+        # Heartbeat
         if time.time() - last_heartbeat >= heartbeat_interval:
-            minutes = elapsed // 60
             proc_info = _ler_status(apurar_dialog)
-            api.log_progress(processo_id, f"Apuracao em andamento ({minutes}min)... {proc_info}")
+            api.log_progress(processo_id, f"Apuracao em andamento ({elapsed}s)... {proc_info}")
             last_heartbeat = time.time()
-
-        if not processamento_iniciou:
-            for ctrl in apurar_dialog.descendants():
-                txt = ctrl.window_text()
-                if 'Processamento' in txt and '0:00:00' not in txt:
-                    processamento_iniciou = True
-                    api.log_progress(processo_id, "Processamento de apuracao iniciado.")
-                    break
 
         # Verificar popup OK
         for w in app.windows():
@@ -168,22 +108,33 @@ def execute(config, api, processo_id, app, main_window, toolbar):
                 txt = ctrl.window_text()
                 cls = ctrl.class_name()
                 if txt == 'OK' and ('Button' in cls or 'Btn' in cls):
-                    api.log_progress(processo_id, f"Apuracao concluida em {elapsed}s (~{elapsed//60}min)!")
+                    api.log_progress(processo_id, f"Apuracao concluida em {elapsed}s!")
                     ctrl.click_input()
                     time.sleep(1)
                     _fechar_dialog(app, api, processo_id)
                     return True
 
-        # Verificar se voltou a "Preparado"
-        if processamento_iniciou:
+        # Verificar "Fim" no historico
+        for ctrl in apurar_dialog.descendants():
+            txt = ctrl.window_text()
+            if not txt:
+                continue
+            if 'Fim' in txt and ('Inicio' in txt or 'Total' in txt or 'Abrindo' in txt):
+                api.log_progress(processo_id, f"Apuracao concluida em {elapsed}s! (detectado 'Fim')")
+                _fechar_dialog(app, api, processo_id)
+                return True
+
+        # Se "Preparado"/"Selecione" aparecer sem "Fim", dados carregaram mas nao processou
+        if not ja_clicou_segunda_vez and elapsed > 10:
             for ctrl in apurar_dialog.descendants():
                 txt = ctrl.window_text()
-                if 'Preparado' in txt:
-                    api.log_progress(processo_id, f"Apuracao concluida em {elapsed}s (~{elapsed//60}min)!")
-                    _fechar_dialog(app, api, processo_id)
-                    return True
+                if 'Preparado' in txt or 'Selecione' in txt:
+                    api.log_progress(processo_id, "Dados carregados. Clicando novamente para processar...")
+                    click_apurar()
+                    ja_clicou_segunda_vez = True
+                    break
 
-    raise TimeoutError(f"Apuracao nao concluiu em {timeout} segundos ({timeout//60}min).")
+    raise TimeoutError(f"Apuracao nao concluiu em {timeout} segundos.")
 
 
 def _ler_status(dialog):
@@ -191,7 +142,7 @@ def _ler_status(dialog):
     info_parts = []
     for ctrl in dialog.descendants():
         txt = ctrl.window_text()
-        if any(kw in txt for kw in ['Processamento', 'Total', 'Preparado', 'Processando']):
+        if any(kw in txt for kw in ['Processamento', 'Total', 'Preparado', 'Processando', 'Fim']):
             info_parts.append(txt.strip())
     return ' | '.join(info_parts) if info_parts else ''
 

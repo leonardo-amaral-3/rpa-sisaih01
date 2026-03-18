@@ -5,8 +5,8 @@ sisaih:
 timeouts:
   app_start: 30
   import_file: 600
-  consistir: 7200
-  apurar: 3600
+  consistir: 1800
+  apurar: 1800
   exportar: 300
 
 export:
