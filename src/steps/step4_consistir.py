@@ -1,56 +1,119 @@
 import time
+from pywinauto import keyboard
 
-def execute(config, api, processo_id, main_window):
+# PROCESSAMENTO eh o botao[2] na toolbar principal
+MENU_PROCESSAMENTO_INDEX = 2
+
+
+def execute(config, api, processo_id, app, main_window, toolbar):
     """
-    Etapa 4: Processamento -> Consistir Produção
-    Este é o passo mais longo (gargalo), com polling robusto.
+    Etapa 4: PROCESSAMENTO -> CONSISTIR PRODUCAO
+    Clica em Consistir e aguarda o processamento (pode levar 40min+).
     """
-    api.log_progress(processo_id, "Iniciando Etapa 4: Consistir Produção")
+    api.log_progress(processo_id, "Iniciando Etapa 4: Consistir Producao")
     
-    # 1. Navegar no menu principal: Processamento -> Consistir Produção
-    try:
-        main_window.menu_select("Processamento->Consistir Produção")
-        time.sleep(2)
-    except Exception as e:
-        raise Exception(f"Falha ao navegar no menu 'Processamento->Consistir Produção': {e}")
-        
-    # 2. Janela de consistência
-    consist_dialog = main_window.child_window(title_re=".*Consist.*")
-    if not consist_dialog.exists():
-        time.sleep(2)
-        
-    # 3. Disparar botão de Consistir
-    api.log_progress(processo_id, "Iniciando botão de Consistir na tela.")
-    # consist_dialog.child_window(title="Consistir").click()
+    # 1. Navegar no menu: PROCESSAMENTO -> CONSISTIR PRODUCAO
+    from steps.step1_check_open import click_menu
+    click_menu(main_window, toolbar, MENU_PROCESSAMENTO_INDEX, "CONSISTIR PRODUCAO")
     
-    # 4. Polling longo aguardando a finalizacao
-    timeout = config["timeouts"].get("consistir", 3600)  # default 1 hora
-    check_interval = 60 # Check a cada 1 minuto
+    api.log_progress(processo_id, "Dialog 'Consistencia da Producao' aberto.")
+    time.sleep(2)
     
+    # 2. Encontrar e clicar o botao "Consistir" no dialog
+    consistir_btn = None
+    for w in app.windows():
+        for ctrl in w.descendants():
+            txt = ctrl.window_text()
+            cls = ctrl.class_name()
+            if txt == 'Consistir' and 'Button' in cls:
+                consistir_btn = ctrl
+                break
+        if consistir_btn:
+            break
+    
+    if not consistir_btn:
+        # Tentar achar por texto parcial
+        for w in app.windows():
+            for ctrl in w.descendants():
+                txt = ctrl.window_text()
+                cls = ctrl.class_name()
+                if 'Consistir' in txt and 'Button' in cls:
+                    consistir_btn = ctrl
+                    break
+            if consistir_btn:
+                break
+    
+    if not consistir_btn:
+        raise Exception("Botao 'Consistir' nao encontrado no dialog.")
+    
+    api.log_progress(processo_id, "Clicando em Consistir... Aguardando processamento (pode levar 40min+).")
+    consistir_btn.click_input()
+    
+    # 3. Aguardar o processamento concluir
+    # O dialog mostra "Historico do processamento" enquanto roda.
+    # Quando termina, o botao Consistir volta a ficar habilitado,
+    # ou aparece um dialog de conclusao.
+    timeout = config["timeouts"].get("consistir", 7200)  # 2h default
     start_time = time.time()
-    last_log_time = time.time()
+    heartbeat_interval = 60  # Log a cada 1 minuto
+    last_heartbeat = start_time
+    
+    api.log_progress(processo_id, f"Consistencia em andamento (timeout: {timeout}s = {timeout//3600}h)...")
+    
+    # Dar um tempo inicial pro processamento comecar
+    time.sleep(10)
     
     while time.time() - start_time < timeout:
-        # Aqui, a condicao de saida depende da UI. Por exemplo, se aparecer um popup "Consistencia Terminada"
-        # Ou se a barra de progresso sumir, botão "Fechar" habilitar.
+        time.sleep(5)
+        elapsed = int(time.time() - start_time)
         
-        # simulated_finish = False
-        # if simulated_finish:
-        #     api.log_progress(processo_id, "Processamento de consistência finalizado com sucesso!")
-        #     break
-            
-        # Emitir logs de heartbeat a cada 5 mins para a API saber que ainda tá vivo
-        if time.time() - last_log_time >= 300: # 5 minutos
-            elapsed_mins = int((time.time() - start_time) / 60)
-            api.log_progress(processo_id, f"Processamento em andamento: Consistindo há {elapsed_mins} minutos...")
-            last_log_time = time.time()
-            
-        time.sleep(check_interval)
-        break # DEBUG: Remove in real iteration
+        # Heartbeat periodico
+        if time.time() - last_heartbeat >= heartbeat_interval:
+            minutes = elapsed // 60
+            api.log_progress(processo_id, f"Consistencia em andamento ({minutes}min)...")
+            last_heartbeat = time.time()
         
-    else:
-        # Se saiu do while pelo timeout
-        raise TimeoutError(f"O processo de consistência passou do tempo limite ({timeout}s).")
+        # Verificar se apareceu um popup/dialog com OK
+        for w in app.windows():
+            for ctrl in w.descendants():
+                txt = ctrl.window_text()
+                cls = ctrl.class_name()
+                if txt == 'OK' and 'Button' in cls:
+                    api.log_progress(processo_id, f"Consistencia concluida em {elapsed}s (~{elapsed//60}min)!")
+                    ctrl.click_input()
+                    time.sleep(1)
+                    _fechar_dialog(app, api, processo_id)
+                    return True
+        
+        # Verificar se o botao Consistir voltou a ficar habilitado
+        # (indica que terminou sem popup de OK)
+        try:
+            if consistir_btn.is_enabled():
+                # Checar se tem texto no historico
+                api.log_progress(processo_id, f"Consistencia parece ter concluido em {elapsed}s (~{elapsed//60}min).")
+                _fechar_dialog(app, api, processo_id)
+                return True
+        except Exception:
+            pass
     
-    api.log_progress(processo_id, "Etapa 4 concluída: Arquivo Consistido.")
-    return True
+    raise TimeoutError(f"Consistencia nao concluiu em {timeout} segundos ({timeout//3600}h).")
+
+
+def _fechar_dialog(app, api, processo_id):
+    """Fecha o dialog de Consistencia clicando em Fechar ou ESC."""
+    api.log_progress(processo_id, "Fechando dialog de Consistencia...")
+    time.sleep(1)
+    
+    for w in app.windows():
+        for ctrl in w.descendants():
+            txt = ctrl.window_text()
+            cls = ctrl.class_name()
+            if 'Fechar' in txt and 'Button' in cls:
+                ctrl.click_input()
+                time.sleep(0.5)
+                api.log_progress(processo_id, "Etapa 4 concluida: Consistencia finalizada com sucesso.")
+                return
+    
+    keyboard.send_keys("{ESC}")
+    time.sleep(0.5)
+    api.log_progress(processo_id, "Etapa 4 concluida: Consistencia finalizada com sucesso.")

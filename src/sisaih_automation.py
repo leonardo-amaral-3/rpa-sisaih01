@@ -38,8 +38,8 @@ def run_automation(processo_id, file_path, hospital_data, is_local_mode):
         # Step 3: Manutencao -> Importar -> Producao
         step3_importar.execute(config, api, processo_id, app, main_window, toolbar, file_path)
         
-        # Step 4: Processamento -> Consistir (desabilitado ate mapear Step 3)
-        # step4_consistir.execute(config, api, processo_id, main_window, toolbar)
+        # Step 4: Processamento -> Consistir Producao
+        step4_consistir.execute(config, api, processo_id, app, main_window, toolbar)
         
         api.notify_completion(processo_id, status="COMPLETED")
         
