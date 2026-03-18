@@ -114,8 +114,8 @@ def execute(config, api, processo_id, app, main_window, toolbar):
     if not apurar_btn and not apurar_coords:
         api.log_progress(processo_id, "Estrategia 4: usando TPanel como referencia...", level="DEBUG")
 
-        # Encontrar o TPanel da barra de botoes (o mais estreito, altura < 60px)
-        button_panel = None
+        # Encontrar o TPanel da barra de botoes (altura 30-60px, o mais ALTO na tela)
+        candidate_panels = []
         progress_bar = None
         for ctrl in apurar_dialog.descendants():
             if ctrl.class_name() == 'TProgressBar':
@@ -126,9 +126,11 @@ def execute(config, api, processo_id, app, main_window, toolbar):
                     r = ctrl.rectangle()
                     height = r.bottom - r.top
                     if 30 <= height <= 60:
-                        button_panel = ctrl
+                        candidate_panels.append((r.top, ctrl))
                 except Exception:
                     pass
+        candidate_panels.sort(key=lambda x: x[0])
+        button_panel = candidate_panels[0][1] if candidate_panels else None
 
         if button_panel:
             p_rect = button_panel.rectangle()

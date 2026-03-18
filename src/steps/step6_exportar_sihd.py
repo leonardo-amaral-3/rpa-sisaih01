@@ -72,7 +72,7 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
     os.makedirs(export_dir, exist_ok=True)
     cnes = hospital_data.get("cnes", "0000000")
     cnes_clean = re.sub(r'\D', '', cnes)  # "227023-4" -> "2270234"
-    competencia = _ler_competencia(main_window)
+    competencia = _ler_competencia(app, main_window, api, processo_id)
     filename = f"{cnes_clean}_{competencia}.txt"
     export_path = f"{export_dir}\\{filename}"
 
@@ -89,10 +89,28 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
     if not arquivo_edit:
         raise Exception("Campo 'Arquivo' nao encontrado no dialog de exportacao.")
 
+    # Logar valor atual antes de preencher
+    current_val = arquivo_edit.window_text()
+    api.log_progress(processo_id, f"Valor atual do campo Arquivo: '{current_val}'", level="DEBUG")
+
     arquivo_edit.click_input()
     time.sleep(0.2)
     arquivo_edit.set_edit_text(export_path)
-    time.sleep(0.5)
+    time.sleep(0.3)
+
+    # Verificar se o valor foi setado corretamente
+    new_val = arquivo_edit.window_text()
+    api.log_progress(processo_id, f"Valor apos set_edit_text: '{new_val}'", level="DEBUG")
+    if export_path not in new_val and new_val != export_path:
+        # Tentar via teclado: Ctrl+A, digitar
+        api.log_progress(processo_id, "set_edit_text nao funcionou, tentando via teclado...", level="DEBUG")
+        arquivo_edit.click_input()
+        time.sleep(0.1)
+        keyboard.send_keys("^a")  # Ctrl+A
+        time.sleep(0.1)
+        keyboard.send_keys(export_path.replace("\\", "{\\}"), with_spaces=True)
+        time.sleep(0.3)
+    time.sleep(0.2)
 
     api.log_progress(processo_id, f"Campo Arquivo preenchido: {export_path}")
 
@@ -249,33 +267,62 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
     raise TimeoutError(f"Exportacao nao concluiu em {timeout} segundos.")
 
 
-def _ler_competencia(main_window):
+def _ler_competencia(app, main_window, api, processo_id):
     """
     Le a competencia da status bar do SISAIH01.
-    Formato esperado: "APRES.: 02 / 2026" -> "022026"
+    Tenta varios padroes: "APRES.: 02 / 2026", "01/2026", "012026", titulo da janela, etc.
     """
+    # Debug: logar todos os textos da janela principal para diagnostico
+    all_texts = []
+    for ctrl in main_window.descendants():
+        txt = ctrl.window_text().strip()
+        if txt:
+            all_texts.append(f"'{txt}' ({ctrl.class_name()})")
+    api.log_progress(processo_id,
+        f"Textos na janela principal: {'; '.join(all_texts)}", level="DEBUG")
+
+    # Padrao 1: "MM / AAAA" (com espacos)
     for ctrl in main_window.descendants():
         txt = ctrl.window_text()
-        # Procurar padrao "APRES.: MM / AAAA" ou "MM / AAAA"
         match = re.search(r'(\d{2})\s*/\s*(\d{4})', txt)
         if match:
-            mes = match.group(1)
-            ano = match.group(2)
-            return f"{mes}{ano}"
+            return f"{match.group(1)}{match.group(2)}"
 
-    # Fallback: procurar em todas as janelas
+    # Padrao 2: "MM/AAAA" (sem espacos)
+    for ctrl in main_window.descendants():
+        txt = ctrl.window_text()
+        match = re.search(r'(\d{2})/(\d{4})', txt)
+        if match:
+            return f"{match.group(1)}{match.group(2)}"
+
+    # Padrao 3: "MMAAAA" (6 digitos consecutivos com mes valido)
+    for ctrl in main_window.descendants():
+        txt = ctrl.window_text()
+        match = re.search(r'(?:APRES|COMP)[^0-9]*(\d{2})(\d{4})', txt, re.IGNORECASE)
+        if match:
+            return f"{match.group(1)}{match.group(2)}"
+
+    # Padrao 4: titulo da janela principal
+    title = main_window.window_text()
+    match = re.search(r'(\d{2})\s*/?\s*(\d{4})', title)
+    if match:
+        return f"{match.group(1)}{match.group(2)}"
+
+    # Padrao 5: procurar em TODAS as janelas do app
     try:
-        app = main_window.app
         for w in app.windows():
             for ctrl in w.descendants():
                 txt = ctrl.window_text()
                 match = re.search(r'(\d{2})\s*/\s*(\d{4})', txt)
                 if match:
                     return f"{match.group(1)}{match.group(2)}"
+                match = re.search(r'(\d{2})/(\d{4})', txt)
+                if match:
+                    return f"{match.group(1)}{match.group(2)}"
     except Exception:
         pass
 
-    # Se nao encontrou, retornar placeholder
+    api.log_progress(processo_id, "Competencia nao encontrada na janela!", level="WARNING")
     return "000000"
 
 

@@ -99,7 +99,8 @@ def _find_dialog(app, keywords):
 
 def _click_fechar_by_panel(dialog, api, processo_id):
     """Clica no botao Fechar por coordenada usando TPanel como referencia."""
-    button_panel = None
+    # Coletar TODOS os TPanels estreitos (barra de botoes) e o TProgressBar
+    candidate_panels = []
     progress_bar = None
 
     for ctrl in dialog.descendants():
@@ -111,26 +112,36 @@ def _click_fechar_by_panel(dialog, api, processo_id):
                 r = ctrl.rectangle()
                 height = r.bottom - r.top
                 if 30 <= height <= 60:
-                    button_panel = ctrl
+                    candidate_panels.append((r.top, ctrl))
             except Exception:
                 pass
 
-    if not button_panel:
+    if not candidate_panels:
         return False
+
+    # Pegar o painel mais ALTO na tela (menor top) — onde ficam os botoes
+    candidate_panels.sort(key=lambda x: x[0])
+    button_panel = candidate_panels[0][1]
 
     p_rect = button_panel.rectangle()
     panel_width = p_rect.right - p_rect.left
     btn_zone = panel_width // 3
 
+    # Centro Y: acima da progress bar se ela estiver dentro deste painel
     if progress_bar:
         pb_rect = progress_bar.rectangle()
-        cy = (p_rect.top + pb_rect.top) // 2
+        if pb_rect.top >= p_rect.top and pb_rect.bottom <= p_rect.bottom:
+            cy = (p_rect.top + pb_rect.top) // 2
+        else:
+            cy = (p_rect.top + p_rect.bottom) // 2
     else:
         cy = (p_rect.top + p_rect.bottom) // 2
 
     # Fechar eh o 3o botao (ultima zona)
     cx = p_rect.left + btn_zone * 2 + btn_zone // 2
 
-    api.log_progress(processo_id, f"Fechar por coordenada: ({cx}, {cy})", level="DEBUG")
+    api.log_progress(processo_id,
+        f"Fechar por coordenada: ({cx}, {cy}) [panel rect=({p_rect.left},{p_rect.top},{p_rect.right},{p_rect.bottom})]",
+        level="DEBUG")
     pwa_mouse.click(coords=(cx, cy))
     return True
