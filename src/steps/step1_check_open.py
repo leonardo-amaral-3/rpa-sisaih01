@@ -67,13 +67,13 @@ def click_menu(win, toolbar, button_index, menu_item_text=None, downs=None):
 def execute(config, api, processo_id):
     """
     Etapa 1: Verificar se o SISAIH01 esta rodando, se nao, abri-lo.
-    Retorna a instancia do Application, a Janela Principal e a Toolbar Principal.
+    Retorna apenas a instancia do Application (toolbar sera buscada apos login).
     """
     api.log_progress(processo_id, "Iniciando Etapa 1: Verificar/Abrir SISAIH01")
-    
+
     exec_path = config["sisaih"]["executable_path"]
     app = Application(backend="win32")
-    
+
     # 1. Tentar conectar a uma instancia existente
     try:
         app.connect(path=exec_path, timeout=5)
@@ -85,22 +85,27 @@ def execute(config, api, processo_id):
         app.start(exec_path)
         time.sleep(5)
 
-    # 2. Encontrar a janela PRINCIPAL pela class TFrmPrincipal (nao top_window pq
-    #    pode ter formularios abertos na frente como 'Cadastro de Hospital')
+    api.log_progress(processo_id, "Etapa 1 concluida: SISAIH01 aberto.")
+    return app
+
+
+def setup_main_window(app, api, processo_id):
+    """
+    Apos login: encontra a janela principal, fecha dialogs residuais e retorna toolbar.
+    """
+    # Encontrar a janela PRINCIPAL pela class TFrmPrincipal
     main_window = None
     for w in app.windows():
         if w.class_name() == 'TFrmPrincipal':
             main_window = w
             break
-    
+
     if not main_window:
-        # Fallback: usar top_window
         main_window = app.top_window()
-    
+
     api.log_progress(processo_id, f"Janela principal: '{main_window.window_text()}' (Class: {main_window.class_name()})")
-    
-    # 3. Fechar qualquer formulario que esteja aberto na frente
-    # Lista abrangente de keywords para pegar qualquer dialog residual do SISAIH01
+
+    # Fechar qualquer formulario residual
     residual_keywords = [
         'Cadastro', 'Importa', 'Consist', 'Hospital', 'Produc',
         'Manutenc', 'Processamento', 'Seleciona', 'Apur', 'Exporta',
@@ -117,15 +122,14 @@ def execute(config, api, processo_id):
             except Exception:
                 keyboard.send_keys("{ESC}")
                 time.sleep(0.5)
-    
-    # 4. Encontrar a toolbar principal (menu)
+
+    # Encontrar a toolbar principal (menu)
     toolbar = find_main_toolbar(main_window)
     api.log_progress(processo_id, f"Toolbar principal encontrada com {toolbar.button_count()} botoes.")
-    
+
     try:
         main_window.set_focus()
     except Exception:
         pass
 
-    api.log_progress(processo_id, "Etapa 1 concluida: SISAIH01 aberto e pronto.")
-    return app, main_window, toolbar
+    return main_window, toolbar

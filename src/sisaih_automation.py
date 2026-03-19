@@ -94,21 +94,14 @@ def run_automation(processo_id, file_path, hospital_data, is_local_mode, config=
     vigilante = None
     
     try:
-        # Step 1: Verificar/Abrir Aplicacao (retorna app, window, e toolbar)
-        app, main_window, toolbar = step1_check_open.execute(config, api, processo_id)
+        # Step 1: Verificar/Abrir Aplicacao (retorna apenas app)
+        app = step1_check_open.execute(config, api, processo_id)
 
         # Step 1b: Login no SISAIH01 (usuario, senha, apresentacao)
         step1b_login.execute(config, api, processo_id, app, competencia)
 
-        # Reconectar a janela principal e toolbar apos login
-        main_window = None
-        for w in app.windows():
-            if w.class_name() == 'TFrmPrincipal':
-                main_window = w
-                break
-        if not main_window:
-            main_window = app.top_window()
-        toolbar = step1_check_open.find_main_toolbar(main_window)
+        # Apos login: encontrar janela principal, fechar residuais, buscar toolbar
+        main_window, toolbar = step1_check_open.setup_main_window(app, api, processo_id)
 
         # Iniciar a thread vigilante
         vigilante = Vigilante(app, api, processo_id)
