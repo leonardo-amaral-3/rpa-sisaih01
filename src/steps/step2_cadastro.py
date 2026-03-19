@@ -4,6 +4,14 @@ from pywinauto.application import Application
 # Indices dos botoes na toolbar principal
 MENU_CADASTRO = 0
 MENU_PRODUCAO = 1
+
+
+def format_cnes(cnes):
+    """Formata CNES para mascara do SISAIH01: 000000-0"""
+    digits = ''.join(c for c in str(cnes) if c.isdigit())
+    if len(digits) == 7:
+        return f"{digits[:6]}-{digits[6]}"
+    return digits
 MENU_PROCESSAMENTO = 2
 MENU_RELATORIOS = 3
 MENU_CONSULTA = 4
@@ -90,6 +98,8 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
             
         value = hospital_data.get(key, "")
         if value:
+            if key == "cnes":
+                value = format_cnes(value)
             try:
                 edit_ctrl = edits[i]
                 edit_ctrl.click_input()  # Foca no campo
