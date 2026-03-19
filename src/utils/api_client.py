@@ -64,8 +64,9 @@ class ApiClient:
                 payload = {
                     "processoId": processo_id,
                     "status": status,
-                    "message": error_message
                 }
+                if error_message:
+                    payload["message"] = error_message
                 if s3_output_key:
                     payload["s3_output_key"] = s3_output_key
                 self._post_with_retry(url, payload)
