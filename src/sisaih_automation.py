@@ -9,7 +9,7 @@ import traceback
 from pywinauto import keyboard
 
 from utils.api_client import ApiClient
-from steps import step1_check_open, step2_cadastro, step2b_excluir_producao, step3_importar, step4_consistir, step5_apurar, step6_exportar_sihd
+from steps import step1_check_open, step1b_login, step2_cadastro, step2b_excluir_producao, step3_importar, step4_consistir, step5_apurar, step6_exportar_sihd
 from vigilante import Vigilante
 
 def load_config(config_path="config.yaml"):
@@ -96,11 +96,24 @@ def run_automation(processo_id, file_path, hospital_data, is_local_mode, config=
     try:
         # Step 1: Verificar/Abrir Aplicacao (retorna app, window, e toolbar)
         app, main_window, toolbar = step1_check_open.execute(config, api, processo_id)
-        
+
+        # Step 1b: Login no SISAIH01 (usuario, senha, apresentacao)
+        step1b_login.execute(config, api, processo_id, app, competencia)
+
+        # Reconectar a janela principal e toolbar apos login
+        main_window = None
+        for w in app.windows():
+            if w.class_name() == 'TFrmPrincipal':
+                main_window = w
+                break
+        if not main_window:
+            main_window = app.top_window()
+        toolbar = step1_check_open.find_main_toolbar(main_window)
+
         # Iniciar a thread vigilante
         vigilante = Vigilante(app, api, processo_id)
         vigilante.start_watch()
-        
+
         # Step 2: Cadastros -> Hospitais
         step2_cadastro.execute(config, api, processo_id, app, main_window, toolbar, hospital_data)
         _fechar_dialogs_residuais(app, api, processo_id, main_window)
