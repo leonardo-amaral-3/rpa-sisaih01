@@ -85,8 +85,9 @@ def _fechar_dialogs_residuais(app, api, processo_id, main_window):
     if fechados > 0:
         api.log_progress(processo_id, f"Fechados {fechados} dialog(s) residual(is).")
 
-def run_automation(processo_id, file_path, hospital_data, is_local_mode):
-    config = load_config()
+def run_automation(processo_id, file_path, hospital_data, is_local_mode, config=None):
+    if config is None:
+        config = load_config()
     api = ApiClient(config, is_local_mode)
     
     api.log_progress(processo_id, "--- Iniciando Automacao SISAIH01 ---", level="INFO")

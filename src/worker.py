@@ -198,7 +198,7 @@ class SQSWorker:
             self._kill_sisaih()
 
             # 3. Executar automacao (re-raise em worker mode)
-            result = run_automation(processo_id, local_path, hospital_data, is_local_mode=False)
+            result = run_automation(processo_id, local_path, hospital_data, is_local_mode=False, config=self.config)
 
             # 4. Upload resultado para S3
             export_path = result.get('export_path', '')
@@ -245,7 +245,7 @@ class SQSWorker:
         self._kill_sisaih()
 
         try:
-            result = run_automation(processo_id, file_path, hospital_data, is_local_mode=True)
+            result = run_automation(processo_id, file_path, hospital_data, is_local_mode=True, config=self.config)
             status = result.get('status', 'UNKNOWN') if result else 'FAILED'
             print(f"[Worker] Resultado: {status}")
             if result and result.get('export_path'):
