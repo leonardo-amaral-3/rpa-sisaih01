@@ -79,6 +79,14 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data, 
 
     api.log_progress(processo_id, f"Arquivo de exportacao: {export_path}")
 
+    # 3b. Deletar arquivo existente para evitar I/O error 103
+    if os.path.exists(export_path):
+        try:
+            os.remove(export_path)
+            api.log_progress(processo_id, f"Arquivo anterior removido: {export_path}")
+        except Exception as e:
+            api.log_progress(processo_id, f"Aviso: nao foi possivel remover arquivo anterior: {e}", level="WARNING")
+
     # 4. Preencher o campo "Arquivo" (TEdit)
     arquivo_edit = None
     for ctrl in export_dialog.descendants():
