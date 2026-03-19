@@ -17,6 +17,75 @@ def _calcular_apresentacao(competencia):
     return f"{mes:02d}{ano}"
 
 
+def _fechar_popups_pos_login(app, api, processo_id):
+    """
+    Fecha popups que aparecem apos o login (ex: copia de seguranca, avisos).
+    """
+    for attempt in range(5):
+        found_popup = False
+        for w in app.windows():
+            title = w.window_text()
+            cls = w.class_name()
+            # Pular janelas principais
+            if cls in ('TFrmPrincipal', 'TApplication', 'TFrmLogin'):
+                continue
+            if not title:
+                continue
+            # Detectar popups de confirmacao/aviso
+            if any(kw in title.lower() for kw in ['copia', 'confirm', 'aviso', 'aten']):
+                api.log_progress(processo_id, f"Popup pos-login detectado: '{title}'. Fechando...")
+                found_popup = True
+                # Tentar clicar em Nao/No/Cancelar
+                clicked = False
+                for ctrl in w.descendants():
+                    txt = ctrl.window_text()
+                    if any(kw in txt for kw in ['Não', 'Nao', 'No', 'Cancelar', 'Cancel']):
+                        try:
+                            ctrl.click_input()
+                            clicked = True
+                            break
+                        except Exception:
+                            pass
+                if not clicked:
+                    # Tentar fechar com ESC ou Enter (para "OK")
+                    try:
+                        w.set_focus()
+                        time.sleep(0.2)
+                        keyboard.send_keys("{ESCAPE}")
+                    except Exception:
+                        keyboard.send_keys("{ENTER}")
+                time.sleep(1)
+                break
+
+            # Detectar dialogs genericos (#32770 = MessageBox do Windows)
+            if cls == '#32770':
+                api.log_progress(processo_id, f"MessageBox pos-login: '{title}'. Fechando...")
+                found_popup = True
+                try:
+                    w.set_focus()
+                    time.sleep(0.2)
+                    # Clicar em Nao se existir, senao OK
+                    clicked = False
+                    for ctrl in w.descendants():
+                        txt = ctrl.window_text()
+                        if any(kw in txt for kw in ['&Não', '&Nao', '&No', 'Não', 'Nao']):
+                            try:
+                                ctrl.click_input()
+                                clicked = True
+                                break
+                            except Exception:
+                                pass
+                    if not clicked:
+                        keyboard.send_keys("{ESCAPE}")
+                except Exception:
+                    keyboard.send_keys("{ESCAPE}")
+                time.sleep(1)
+                break
+
+        if not found_popup:
+            break
+
+
 def execute(config, api, processo_id, app, competencia):
     """
     Etapa 1b: Login no SISAIH01.
@@ -96,22 +165,24 @@ def execute(config, api, processo_id, app, competencia):
         except Exception:
             keyboard.send_keys("{ENTER}")
 
-    # Aguardar login processar e janela principal carregar
+    # Aguardar login processar
     time.sleep(3)
 
-    # Verificar se login foi bem sucedido (janela de login sumiu)
+    # Fechar popups pos-login (ex: copia de seguranca)
+    _fechar_popups_pos_login(app, api, processo_id)
+
+    # Verificar se login foi bem sucedido (janela principal existe)
+    main_found = False
     for attempt in range(10):
-        login_still_open = False
         for w in app.windows():
-            title = w.window_text()
-            if 'Autentica' in title or 'Login' in title:
-                login_still_open = True
+            if w.class_name() == 'TFrmPrincipal':
+                main_found = True
                 break
-        if not login_still_open:
+        if main_found:
             break
         time.sleep(1)
 
-    if login_still_open:
-        raise Exception("Login falhou: janela de autenticacao ainda aberta.")
+    if not main_found:
+        raise Exception("Login falhou: janela principal (TFrmPrincipal) nao encontrada.")
 
     api.log_progress(processo_id, "Etapa 1b concluida: Login realizado.")
