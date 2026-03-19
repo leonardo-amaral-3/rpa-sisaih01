@@ -274,10 +274,16 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data, 
                     ctrl.click_input()
                     time.sleep(1)
                     if is_error:
-                        # Erro I/O 103 — arquivo pode ter sido criado mesmo assim
-                        # Continuar monitorando ou tentar novamente
+                        # I/O error 103 — bug do SISAIH01, mas o arquivo eh gerado mesmo assim
                         api.log_progress(processo_id,
                             "Erro durante exportacao, verificando se arquivo foi gerado...", level="WARNING")
+                        time.sleep(2)
+                        if os.path.exists(export_path) and os.path.getsize(export_path) > 0:
+                            api.log_progress(processo_id,
+                                f"Arquivo gerado apesar do erro ({os.path.getsize(export_path)} bytes). Continuando.")
+                            _fechar_dialog(app, api, processo_id)
+                            return export_path
+                        # Arquivo nao existe — continuar monitorando
                         continue
                     api.log_progress(processo_id, f"Exportacao concluida em {elapsed}s!")
                     _fechar_dialog(app, api, processo_id)
