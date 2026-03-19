@@ -1,5 +1,6 @@
 import os
 import boto3
+from botocore.config import Config
 
 
 class S3Handler:
@@ -14,6 +15,7 @@ class S3Handler:
             client_kwargs['endpoint_url'] = endpoint_url
             client_kwargs['aws_access_key_id'] = aws_cfg.get('access_key_id', 'minioadmin')
             client_kwargs['aws_secret_access_key'] = aws_cfg.get('secret_access_key', 'minioadmin')
+            client_kwargs['config'] = Config(s3={'addressing_style': 'path'})
 
         self.client = boto3.client('s3', **client_kwargs)
 
