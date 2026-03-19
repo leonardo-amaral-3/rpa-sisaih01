@@ -264,6 +264,29 @@ class SQSWorker:
         time.sleep(2)
 
 
+def sync_clock_from_endpoint(endpoint_url):
+    """Sincroniza o relogio do Windows com o header Date do servidor (MinIO/API)."""
+    if sys.platform != 'win32':
+        return
+    try:
+        import requests
+        resp = requests.head(endpoint_url, timeout=5)
+        server_date = resp.headers.get('Date')
+        if not server_date:
+            return
+        from email.utils import parsedate_to_datetime
+        server_time = parsedate_to_datetime(server_date)
+        # Converter para hora local
+        local_time = server_time.astimezone()
+        time_str = local_time.strftime('%H:%M:%S')
+        date_str = local_time.strftime('%m-%d-%Y')
+        subprocess.run(['cmd', '/c', 'time', time_str], capture_output=True, check=False)
+        subprocess.run(['cmd', '/c', 'date', date_str], capture_output=True, check=False)
+        print(f"[Worker] Relogio sincronizado com servidor: {local_time.isoformat()}")
+    except Exception as e:
+        print(f"[Worker] Aviso: nao foi possivel sincronizar relogio: {e}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="SQS Worker - SIHD Converter")
     parser.add_argument('--local', action='store_true', help='Modo local: le de local_messages.json')
@@ -271,6 +294,12 @@ def main():
     args = parser.parse_args()
 
     config = load_config(args.config)
+
+    # Sincronizar relogio com o MinIO/S3 antes de iniciar
+    s3_endpoint = config.get('aws', {}).get('s3_endpoint_url')
+    if s3_endpoint:
+        sync_clock_from_endpoint(s3_endpoint)
+
     worker = SQSWorker(config, is_local_mode=args.local)
     worker.start()
 
