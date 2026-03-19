@@ -1,0 +1,43 @@
+# Config para dev local — VM Windows consumindo ElasticMQ/MinIO do host
+# Substituir 172.17.0.1 pelo IP da maquina que roda o docker-compose
+# Exemplo: 192.168.1.100, 10.0.0.5, etc.
+#
+# Uso: python worker.py --config config.local.yaml
+
+sisaih:
+  executable_path: 'C:/DATASUS/SISAIH01/SISAIH01.EXE'
+  window_title_regex: '.*SISAIH.*'
+
+timeouts:
+  app_start: 30
+  import_file: 600
+  consistir: 1800
+  apurar: 1800
+  exportar: 300
+
+export:
+  dir: 'C:\exports'
+
+paths:
+  local_input_dir: 'C:\SIHD_CONVERTER\input'
+
+api:
+  base_url: 'http://172.17.0.1:3004'
+  api_key: 'processos-api-key'
+  timeout: 15
+  max_retries: 3
+
+aws:
+  region: 'us-east-1'
+  sqs_queue_url: 'http://172.17.0.1:9324/000000000000/sihd-converter-queue'
+  s3_bucket: 'processing-contas-bucket'
+  sqs_endpoint_url: 'http://172.17.0.1:9324'
+  s3_endpoint_url: 'http://172.17.0.1:9000'
+  access_key_id: 'minioadmin'
+  secret_access_key: 'minioadmin'
+
+worker:
+  max_empty_polls: 3
+  shutdown_delay: 120
+  visibility_heartbeat: 300
+  visibility_extension: 900

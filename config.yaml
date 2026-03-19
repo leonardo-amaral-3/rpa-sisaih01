@@ -12,9 +12,27 @@ timeouts:
 export:
   dir: 'C:\exports'
 
+paths:
+  local_input_dir: 'C:\SIHD_CONVERTER\input'
+
 api:
   base_url: 'http://localhost:3333'
+  api_key: ''
+  timeout: 15
+  max_retries: 3
 
 aws:
   region: 'sa-east-1'
   sqs_queue_url: 'SUA_QUEUE_URL_AQUI'
+  s3_bucket: 'SEU_BUCKET_AQUI'
+  # Descomente para dev local (ElasticMQ/MinIO):
+  # sqs_endpoint_url: 'http://HOST_IP:9324'
+  # s3_endpoint_url: 'http://HOST_IP:9000'
+  # access_key_id: 'minioadmin'
+  # secret_access_key: 'minioadmin'
+
+worker:
+  max_empty_polls: 3
+  shutdown_delay: 120
+  visibility_heartbeat: 300
+  visibility_extension: 900

@@ -120,17 +120,21 @@ def run_automation(processo_id, file_path, hospital_data, is_local_mode):
         _fechar_dialogs_residuais(app, api, processo_id, main_window)
 
         # Step 6: Processamento -> Exportar para SIHD
-        step6_exportar_sihd.execute(config, api, processo_id, app, main_window, toolbar, hospital_data, file_path)
+        export_path = step6_exportar_sihd.execute(config, api, processo_id, app, main_window, toolbar, hospital_data, file_path)
         _fechar_dialogs_residuais(app, api, processo_id, main_window)
 
-        api.notify_completion(processo_id, status="COMPLETED")
-        
+        api.log_progress(processo_id, f"Exportacao concluida: {export_path}", level="INFO")
+        return {"status": "COMPLETED", "export_path": export_path}
+
     except Exception as e:
         error_details = traceback.format_exc()
         api.log_progress(processo_id, f"Falha Critica: {e}", level="ERROR")
         api.log_progress(processo_id, error_details, level="DEBUG")
+        if not is_local_mode:
+            raise
         api.notify_completion(processo_id, status="FAILED", error_message=str(e))
-        
+        return {"status": "FAILED", "error": str(e)}
+
     finally:
         if vigilante:
             vigilante.stop_watch()
@@ -164,4 +168,6 @@ if __name__ == "__main__":
     if args.mock_data:
         hospital_data = json.loads(args.mock_data)
 
-    run_automation(args.processo_id, args.file_path, hospital_data, args.local)
+    result = run_automation(args.processo_id, args.file_path, hospital_data, args.local)
+    if result and result.get("status") == "COMPLETED":
+        print(f"Exportado: {result.get('export_path')}")
