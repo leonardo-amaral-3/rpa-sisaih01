@@ -169,6 +169,7 @@ class SQSWorker:
         try:
             body = json.loads(sqs_message['Body'])
             processo_id = body.get('processo_id', 'unknown')
+            competencia = body.get('competencia', '')
             s3_input_key = body.get('s3_input_key', '')
             hospital_data = body.get('hospital_data', {})
             callback_url = body.get('callback_url')
@@ -195,7 +196,7 @@ class SQSWorker:
             api.log_progress(processo_id, f"Arquivo baixado: {local_path}")
 
             # 2. Executar automacao (step1 conecta ao SISAIH01 existente ou abre novo)
-            result = run_automation(processo_id, local_path, hospital_data, is_local_mode=False, config=self.config)
+            result = run_automation(processo_id, local_path, hospital_data, is_local_mode=False, config=self.config, competencia=competencia)
 
             # 4. Upload resultado para S3
             export_path = result.get('export_path', '')
@@ -242,7 +243,8 @@ class SQSWorker:
         self._kill_sisaih()
 
         try:
-            result = run_automation(processo_id, file_path, hospital_data, is_local_mode=True, config=self.config)
+            competencia = msg.get('competencia', '')
+            result = run_automation(processo_id, file_path, hospital_data, is_local_mode=True, config=self.config, competencia=competencia)
             status = result.get('status', 'UNKNOWN') if result else 'FAILED'
             print(f"[Worker] Resultado: {status}")
             if result and result.get('export_path'):

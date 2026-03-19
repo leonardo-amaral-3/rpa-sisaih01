@@ -9,7 +9,7 @@ import traceback
 from pywinauto import keyboard
 
 from utils.api_client import ApiClient
-from steps import step1_check_open, step2_cadastro, step3_importar, step4_consistir, step5_apurar, step6_exportar_sihd
+from steps import step1_check_open, step2_cadastro, step2b_excluir_producao, step3_importar, step4_consistir, step5_apurar, step6_exportar_sihd
 from vigilante import Vigilante
 
 def load_config(config_path="config.yaml"):
@@ -85,7 +85,7 @@ def _fechar_dialogs_residuais(app, api, processo_id, main_window):
     if fechados > 0:
         api.log_progress(processo_id, f"Fechados {fechados} dialog(s) residual(is).")
 
-def run_automation(processo_id, file_path, hospital_data, is_local_mode, config=None):
+def run_automation(processo_id, file_path, hospital_data, is_local_mode, config=None, competencia=''):
     if config is None:
         config = load_config()
     api = ApiClient(config, is_local_mode)
@@ -103,6 +103,13 @@ def run_automation(processo_id, file_path, hospital_data, is_local_mode, config=
         
         # Step 2: Cadastros -> Hospitais
         step2_cadastro.execute(config, api, processo_id, app, main_window, toolbar, hospital_data)
+        _fechar_dialogs_residuais(app, api, processo_id, main_window)
+
+        if vigilante.error_detected:
+            raise Exception(f"Vigilante abortou execucao: {vigilante.error_detected}")
+
+        # Step 2b: Manutencao -> Excluir Producao (limpa dados anteriores)
+        step2b_excluir_producao.execute(config, api, processo_id, app, main_window, toolbar, competencia)
         _fechar_dialogs_residuais(app, api, processo_id, main_window)
 
         if vigilante.error_detected:
