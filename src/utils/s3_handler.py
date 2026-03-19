@@ -22,7 +22,10 @@ class S3Handler:
     def download_file(self, s3_key, local_path):
         """Baixa arquivo do S3 para o path local, criando diretorios se necessario."""
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
-        self.client.download_file(self.bucket, s3_key, local_path)
+        response = self.client.get_object(Bucket=self.bucket, Key=s3_key)
+        with open(local_path, 'wb') as f:
+            for chunk in response['Body'].iter_chunks(1024 * 1024):
+                f.write(chunk)
         return local_path
 
     def upload_file(self, local_path, s3_key):
