@@ -62,6 +62,7 @@ class ApiClient:
             try:
                 url = self.callback_url or f"{self.base_url}/processo/{processo_id}/conversion-callback"
                 payload = {
+                    "processoId": processo_id,
                     "status": status,
                     "message": error_message
                 }
