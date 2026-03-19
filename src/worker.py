@@ -194,10 +194,7 @@ class SQSWorker:
             self.s3.download_file(s3_input_key, local_path)
             api.log_progress(processo_id, f"Arquivo baixado: {local_path}")
 
-            # 2. Reset SISAIH01 (garante estado limpo)
-            self._kill_sisaih()
-
-            # 3. Executar automacao (re-raise em worker mode)
+            # 2. Executar automacao (step1 conecta ao SISAIH01 existente ou abre novo)
             result = run_automation(processo_id, local_path, hospital_data, is_local_mode=False, config=self.config)
 
             # 4. Upload resultado para S3

@@ -42,7 +42,7 @@ class ApiClient:
 
         if not self.is_local_mode and processo_id:
             try:
-                url = f"{self.base_url}/processo/{processo_id}/rpa-logs"
+                url = f"{self.base_url}/processos/{processo_id}/rpa-logs"
                 payload = {
                     "level": level,
                     "message": message,
