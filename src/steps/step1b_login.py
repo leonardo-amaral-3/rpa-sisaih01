@@ -154,16 +154,10 @@ def execute(config, api, processo_id, app, competencia):
     keyboard.send_keys(apresentacao, with_spaces=True)
     time.sleep(0.5)
 
-    # Clicar em Entrar
-    try:
-        btn_entrar = login_window.child_window(title="Entrar", class_name="TBitBtn")
-        btn_entrar.click_input()
-    except Exception:
-        try:
-            btn_entrar = login_window.child_window(title_re=".*Entrar.*")
-            btn_entrar.click_input()
-        except Exception:
-            keyboard.send_keys("{ENTER}")
+    # ENTER para ir ao botao Entrar, ENTER para confirmar
+    keyboard.send_keys("{ENTER}")
+    time.sleep(0.3)
+    keyboard.send_keys("{ENTER}")
 
     # Aguardar login processar
     time.sleep(3)
