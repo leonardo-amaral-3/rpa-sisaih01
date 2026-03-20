@@ -1,4 +1,5 @@
 import time
+import unicodedata
 from pywinauto.application import Application
 
 # Indices dos botoes na toolbar principal
@@ -113,14 +114,34 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
                 api.log_progress(processo_id, f"[Warning] Falha ao preencher '{label}': {e}", level="WARNING")
     
     # 6. Preencher Esfera Administrativa (ComboBox)
-    esfera_map = {"PÚBLICA": "PUBLICO", "PRIVADO": "PRIVADO"}
     esfera = hospital_data.get("esferaAdministrativa", "")
-    esfera = esfera_map.get(esfera, esfera)
     if esfera and combos:
         try:
             combo = combos[0]  # Unico ComboBox no formulario
-            combo.select(esfera)
-            api.log_progress(processo_id, f"  Campo 'Esfera Administrativa' selecionado: {esfera}")
+            opcoes = combo.item_texts()
+            api.log_progress(processo_id, f"[DEBUG] ComboBox Esfera opcoes: {opcoes}")
+            api.log_progress(processo_id, f"[DEBUG] Valor recebido do DB: '{esfera}'")
+
+            # Mapear valor do DB para opcao do ComboBox
+            # Normaliza removendo acentos para comparacao (DB: PUBLICA, ComboBox: PÚBLICA)
+            def strip_accents(s):
+                return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+
+            esfera_norm = strip_accents(esfera).lower()
+            match_idx = None
+            for idx, opcao in enumerate(opcoes):
+                if not opcao.strip():
+                    continue
+                opcao_norm = strip_accents(opcao).lower()
+                if esfera_norm in opcao_norm or opcao_norm in esfera_norm:
+                    match_idx = idx
+                    break
+
+            if match_idx is not None:
+                combo.select(match_idx)
+                api.log_progress(processo_id, f"  Campo 'Esfera Administrativa' selecionado: {opcoes[match_idx]} (idx {match_idx})")
+            else:
+                api.log_progress(processo_id, f"[Warning] Esfera '{esfera}' nao encontrada nas opcoes: {opcoes}", level="WARNING")
         except Exception as e:
             api.log_progress(processo_id, f"[Warning] Falha no ComboBox Esfera: {e}", level="WARNING")
     
