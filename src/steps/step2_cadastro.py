@@ -76,18 +76,18 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
     field_map = [
         ("cnes", "CNES"),
         ("nome", "Nome"),
-        ("codLogradouro", "Cod Logradouro"),
+        ("codigoLogradouro", "Cod Logradouro"),
         ("logradouro", "Logradouro"),
         ("numero", "Numero"),
         ("complemento", "Complemento"),
         ("bairro", "Bairro"),
         ("telefone", "Telefone"),
         ("cep", "CEP"),
-        ("municipio", "Municipio"),
+        ("cidade", "Municipio"),
         ("orgaoEmissor", "Orgao Emissor"),
         ("cpfDiretorClinico", "CPF Diretor Clinico"),
         ("cnsDiretorClinico", "CNS Diretor Clinico"),
-        ("nomeDiretor", "Nome do Diretor"),
+        ("nomeDiretorClinico", "Nome do Diretor"),
     ]
     
     # 5. Preencher os campos Edit
@@ -110,7 +110,9 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
                 api.log_progress(processo_id, f"[Warning] Falha ao preencher '{label}': {e}", level="WARNING")
     
     # 6. Preencher Esfera Administrativa (ComboBox)
+    esfera_map = {"PÚBLICA": "PUBLICO", "PRIVADO": "PRIVADO"}
     esfera = hospital_data.get("esferaAdministrativa", "")
+    esfera = esfera_map.get(esfera, esfera)
     if esfera and combos:
         try:
             combo = combos[0]  # Unico ComboBox no formulario
