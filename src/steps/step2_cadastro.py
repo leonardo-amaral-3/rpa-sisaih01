@@ -23,7 +23,10 @@ def execute(config, api, processo_id, app, main_window, toolbar, hospital_data):
     Etapa 2: CADASTRO -> HOSPITAL -> Preencher formulario -> Gravar [F5]
     """
     api.log_progress(processo_id, "Iniciando Etapa 2: Cadastro de Hospital")
-    
+
+    # Debug: logar todos os dados recebidos do SQS
+    api.log_progress(processo_id, f"[DEBUG] hospital_data recebido: {hospital_data}")
+
     # 1. Abrir formulario via menu CADASTRO -> HOSPITAL
     from steps.step1_check_open import click_menu
     click_menu(main_window, toolbar, MENU_CADASTRO, "HOSPITAL")
