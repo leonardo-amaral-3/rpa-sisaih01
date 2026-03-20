@@ -16,7 +16,19 @@ def load_config(config_path="config.yaml"):
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     full_path = os.path.join(base_dir, config_path)
     with open(full_path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+
+    # Env vars sobrescrevem o YAML (injetadas via User Data / sistema)
+    aws_cfg = config.setdefault('aws', {})
+    aws_cfg['sqs_queue_url'] = os.environ.get('SQS_QUEUE_URL', aws_cfg.get('sqs_queue_url', ''))
+    aws_cfg['s3_bucket'] = os.environ.get('S3_BUCKET', aws_cfg.get('s3_bucket', ''))
+    aws_cfg['region'] = os.environ.get('AWS_REGION', aws_cfg.get('region', 'us-east-1'))
+
+    api_cfg = config.setdefault('api', {})
+    api_cfg['base_url'] = os.environ.get('API_BASE_URL', api_cfg.get('base_url', ''))
+    api_cfg['api_key'] = os.environ.get('API_KEY', api_cfg.get('api_key', ''))
+
+    return config
 
 
 def _fechar_dialogs_residuais(app, api, processo_id, main_window):
